@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nhoms8.ui.theme.Nhoms8Theme
@@ -446,5 +447,20 @@ fun SpendTogetherApp(
                 }
             }
         }
+    }
+}
+
+/**
+ * Preview toàn bộ luồng hoạt động ứng dụng SpendTogether trong Android Studio
+ */
+@Preview(
+    name = "SpendTogether · Luồng ứng dụng chính",
+    showBackground = true,
+    showSystemUi = true
+)
+@Composable
+fun SpendTogetherAppPreview() {
+    Nhoms8Theme {
+        SpendTogetherApp()
     }
 }

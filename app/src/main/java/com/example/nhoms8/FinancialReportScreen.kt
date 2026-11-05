@@ -917,7 +917,11 @@ private fun ProfileReportIcon(modifier: Modifier = Modifier, color: Color) {
 }
 
 // ====================== PREVIEW ======================
-@Preview(showBackground = true, device = "id:pixel_7", name = "14 - Financial Report Screen")
+@Preview(
+    name = "14 · Báo cáo & Thống kê (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun FinancialReportScreenPreview() {
     Nhoms8Theme {

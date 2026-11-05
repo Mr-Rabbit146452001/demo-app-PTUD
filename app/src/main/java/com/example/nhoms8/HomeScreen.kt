@@ -1278,7 +1278,11 @@ private fun ProfileNavIcon(
 }
 
 // ====================== PREVIEW ======================
-@Preview(showBackground = true, device = "id:pixel_7", name = "07 - Home / Dashboard Screen")
+@Preview(
+    name = "07 · Tổng quan quỹ nhóm (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun HomeScreenPreview() {
     Nhoms8Theme {

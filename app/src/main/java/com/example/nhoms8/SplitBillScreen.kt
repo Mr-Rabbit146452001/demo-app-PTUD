@@ -749,7 +749,11 @@ private fun CheckmarkWhiteIcon(
 }
 
 // ====================== PREVIEW ======================
-@Preview(showBackground = true, device = "id:pixel_7", name = "11 - Split Bill Screen")
+@Preview(
+    name = "11 · Chia tiền nhóm (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun SplitBillScreenPreview() {
     Nhoms8Theme {

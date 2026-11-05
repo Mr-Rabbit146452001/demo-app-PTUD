@@ -1057,7 +1057,11 @@ private fun ArrowForwardActionIcon(
 }
 
 // ====================== PREVIEW ======================
-@Preview(showBackground = true, device = "id:pixel_7", name = "10 - Create Expense Screen")
+@Preview(
+    name = "10 · Tạo khoản chi tiêu (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun CreateExpenseScreenPreview() {
     Nhoms8Theme {

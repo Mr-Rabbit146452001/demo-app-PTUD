@@ -24,7 +24,11 @@ sealed class AuthResult {
  * Phụ trách bởi Kỹ sư Dữ liệu & Trưởng nhóm (Lê Văn Hùng) - Nhóm 08
  */
 class FirebaseAuthRepository(
-    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val auth: FirebaseAuth? = try {
+        FirebaseAuth.getInstance()
+    } catch (_: Throwable) {
+        null
+    }
 ) {
 
     /**
@@ -44,12 +48,12 @@ class FirebaseAuthRepository(
     /**
      * Lấy người dùng Firebase hiện tại đã đăng nhập
      */
-    fun getCurrentUser(): FirebaseUser? = auth.currentUser
+    fun getCurrentUser(): FirebaseUser? = auth?.currentUser
 
     /**
      * Kiểm tra trạng thái đã đăng nhập
      */
-    fun isUserLoggedIn(): Boolean = auth.currentUser != null
+    fun isUserLoggedIn(): Boolean = auth?.currentUser != null
 
     /**
      * Đăng ký tài khoản mới bằng Email/Mật khẩu
@@ -59,6 +63,11 @@ class FirebaseAuthRepository(
         password: String,
         displayName: String
     ): AuthResult = suspendCancellableCoroutine { continuation ->
+        val currentAuth = auth ?: run {
+            continuation.resume(AuthResult.Error("Firebase Auth chưa khởi tạo trong môi trường Preview"))
+            return@suspendCancellableCoroutine
+        }
+
         val email = normalizeEmail(emailOrPhone)
 
         if (password.length < 6) {
@@ -66,7 +75,7 @@ class FirebaseAuthRepository(
             return@suspendCancellableCoroutine
         }
 
-        auth.createUserWithEmailAndPassword(email, password)
+        currentAuth.createUserWithEmailAndPassword(email, password)
             .addOnSuccessListener { authResult ->
                 val user = authResult.user
                 if (user != null) {
@@ -97,6 +106,11 @@ class FirebaseAuthRepository(
         emailOrPhone: String,
         password: String
     ): AuthResult = suspendCancellableCoroutine { continuation ->
+        val currentAuth = auth ?: run {
+            continuation.resume(AuthResult.Error("Firebase Auth chưa khởi tạo trong môi trường Preview"))
+            return@suspendCancellableCoroutine
+        }
+
         val email = normalizeEmail(emailOrPhone)
 
         if (email.isBlank() || password.isBlank()) {
@@ -104,7 +118,7 @@ class FirebaseAuthRepository(
             return@suspendCancellableCoroutine
         }
 
-        auth.signInWithEmailAndPassword(email, password)
+        currentAuth.signInWithEmailAndPassword(email, password)
             .addOnSuccessListener { authResult ->
                 val user = authResult.user
                 if (user != null) {
@@ -126,12 +140,17 @@ class FirebaseAuthRepository(
      */
     suspend fun sendPasswordReset(emailOrPhone: String): AuthResult =
         suspendCancellableCoroutine { continuation ->
+            val currentAuth = auth ?: run {
+                continuation.resume(AuthResult.Error("Firebase Auth chưa khởi tạo trong môi trường Preview"))
+                return@suspendCancellableCoroutine
+            }
+
             val email = normalizeEmail(emailOrPhone)
-            auth.sendPasswordResetEmail(email)
+            currentAuth.sendPasswordResetEmail(email)
                 .addOnSuccessListener {
                     continuation.resume(
                         AuthResult.Success(
-                            auth.currentUser ?: userMock(),
+                            currentAuth.currentUser ?: userMock(),
                             "Đã gửi liên kết khôi phục mật khẩu đến $email"
                         )
                     )
@@ -146,7 +165,7 @@ class FirebaseAuthRepository(
      * Đăng xuất khỏi Firebase
      */
     fun signOut() {
-        auth.signOut()
+        auth?.signOut()
     }
 
     /**
@@ -170,6 +189,6 @@ class FirebaseAuthRepository(
     }
 
     private fun userMock(): FirebaseUser {
-        return auth.currentUser ?: throw IllegalStateException("No user")
+        return auth?.currentUser ?: throw IllegalStateException("No user")
     }
 }

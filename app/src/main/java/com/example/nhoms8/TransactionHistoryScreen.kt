@@ -1189,7 +1189,11 @@ private fun ProfileNavSimpleIcon(
 }
 
 // ====================== PREVIEW ======================
-@Preview(showBackground = true, device = "id:pixel_7", name = "13 - Transaction History Screen")
+@Preview(
+    name = "13 · Lịch sử giao dịch (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun TransactionHistoryScreenPreview() {
     Nhoms8Theme {

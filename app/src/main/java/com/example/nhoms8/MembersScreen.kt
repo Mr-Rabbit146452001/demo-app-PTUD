@@ -701,7 +701,11 @@ private fun ChevronRightIcon(
 }
 
 // ====================== PREVIEW ======================
-@Preview(showBackground = true, device = "id:pixel_7", name = "08 - Group Members Screen")
+@Preview(
+    name = "08 · Danh sách thành viên (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun MembersScreenPreview() {
     Nhoms8Theme {

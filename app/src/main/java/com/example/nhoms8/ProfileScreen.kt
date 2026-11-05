@@ -1406,7 +1406,11 @@ private fun ProfileNavIcon(modifier: Modifier = Modifier, color: Color) {
     }
 }
 
-@Preview(showBackground = true, widthDp = 390, heightDp = 844)
+@Preview(
+    name = "15 · Cá nhân & Cài đặt (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun ProfileScreenPreview() {
     Nhoms8Theme {

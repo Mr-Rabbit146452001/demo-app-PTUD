@@ -968,7 +968,11 @@ private fun BellRingingIcon(
     }
 }
 
-@Preview(showBackground = true, widthDp = 390, heightDp = 844)
+@Preview(
+    name = "12 · Quyết toán & Nhắc nợ (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun SettlementScreenPreview() {
     Nhoms8Theme {

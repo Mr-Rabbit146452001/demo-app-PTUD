@@ -886,7 +886,11 @@ private fun TrashCanIcon(
     }
 }
 
-@Preview(showBackground = true, widthDp = 390, heightDp = 844)
+@Preview(
+    name = "09 · Chỉnh sửa thành viên (SpendTogether)",
+    showBackground = true,
+    showSystemUi = true
+)
 @Composable
 fun EditMemberScreenPreview() {
     Nhoms8Theme {

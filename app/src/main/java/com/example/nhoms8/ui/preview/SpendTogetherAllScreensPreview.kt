@@ -5,6 +5,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.example.nhoms8.ChatbotScreen
 import com.example.nhoms8.CreateExpenseScreen
 import com.example.nhoms8.EditMemberScreen
 import com.example.nhoms8.FinancialReportScreen
@@ -24,10 +25,10 @@ import com.example.nhoms8.ui.theme.Nhoms8Theme
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- * BỘ SƯU TẬP PREVIEW 15 MÀN HÌNH SPENDTOGETHER (ALL SCREENS PREVIEW GALLERY)
+ * BỘ SƯU TẬP PREVIEW 16 MÀN HÌNH SPENDTOGETHER (ALL SCREENS PREVIEW GALLERY)
  * Nhóm 08 - Lớp D23CQCI01-N - PTIT
  * ═══════════════════════════════════════════════════════════════════════════════
- * File này tập hợp toàn bộ 15 màn hình trong ứng dụng SpendTogether.
+ * File này tập hợp toàn bộ 16 màn hình trong ứng dụng SpendTogether (bao gồm Trợ lý AI FinSprout).
  * Khi mở file này trong Android Studio và chuyển sang chế độ "Split" hoặc "Design",
  * bạn có thể duyệt trực quan toàn bộ 15 màn hình từ Màn hình chào đến Cài đặt.
  */
@@ -256,5 +257,24 @@ fun PreviewGallery14Report() {
 fun PreviewGallery15Profile() {
     Nhoms8Theme {
         ProfileScreen()
+    }
+}
+
+// ==========================================
+// 6. TRỢ LÝ ẢO FINSPROUT CHATBOT (16)
+// ==========================================
+
+@Preview(
+    name = "16 · Trợ lý AI FinSprout (Smart Chatbot)",
+    group = "06. Trợ lý AI (FinSprout)",
+    showBackground = true,
+    showSystemUi = true
+)
+@Composable
+fun PreviewGallery16Chatbot() {
+    Nhoms8Theme {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            ChatbotScreen()
+        }
     }
 }

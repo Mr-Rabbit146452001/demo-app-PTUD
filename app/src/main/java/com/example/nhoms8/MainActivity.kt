@@ -43,7 +43,8 @@ enum class AppScreen {
     SETTLEMENT,
     HISTORY,
     REPORTS,
-    PROFILE
+    PROFILE,
+    CHATBOT
 }
 
 class MainActivity : ComponentActivity() {
@@ -213,6 +214,9 @@ fun SpendTogetherApp(
                         },
                         onTransactionClicked = { tx ->
                             Toast.makeText(context, "Chi tiết: ${tx.title} (${tx.amountFormatted})", Toast.LENGTH_SHORT).show()
+                        },
+                        onChatbotClicked = {
+                            currentScreen = AppScreen.CHATBOT
                         },
                         onNavTabSelected = { tab ->
                             when (tab) {
@@ -442,6 +446,26 @@ fun SpendTogetherApp(
                                 BottomNavTab.REPORTS -> currentScreen = AppScreen.REPORTS
                                 BottomNavTab.PROFILE -> currentScreen = AppScreen.PROFILE
                             }
+                        }
+                    )
+                }
+
+                AppScreen.CHATBOT -> {
+                    ChatbotScreen(
+                        messages = uiState.chatMessages,
+                        isTyping = uiState.isChatbotTyping,
+                        onBackClicked = {
+                            currentScreen = AppScreen.HOME
+                        },
+                        onSendMessage = { text ->
+                            viewModel.sendMessageToChatbot(text)
+                        },
+                        onConfirmExpense = { messageId ->
+                            viewModel.confirmChatExpense(messageId)
+                            Toast.makeText(context, "Đã lưu khoản chi vào quỹ nhóm!", Toast.LENGTH_SHORT).show()
+                        },
+                        onClearChat = {
+                            viewModel.clearChatHistory()
                         }
                     )
                 }

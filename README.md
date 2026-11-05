@@ -63,6 +63,11 @@ Giao diện ứng dụng được phát triển 100% bằng **Jetpack Compose** 
 - Biểu đồ phân bổ chi tiêu theo danh mục.
 - So sánh chi tiêu giữa các tháng giúp người dùng điều chỉnh ngân sách hợp lý.
 
+### 9. Trợ Lý ẢO FinSprout AI (Smart Chatbot)
+- **Ghi chép chi tiêu tự nhiên ("Chat là Ghi"):** Nhận diện câu nói tự nhiên (ví dụ: *"Ăn lẩu 650k Hùng trả, chia đều"*) -> Bóc tách số tiền, danh mục, người trả và xuất **Thẻ Hành Động 1-chạm** để lưu ngay vào Quỹ.
+- **Cố vấn tài chính tức thì:** Hỏi đáp tình trạng số dư, tỷ lệ chi tiêu so với hạn mức tháng và nhận lời khuyên quản lý tiền bạc.
+- **Soạn tin nhắn nhắc nợ khéo léo:** Tự động tạo tin nhắn đòi tiền bạn bè hóm hỉnh, tế nhị kèm nút sao chép nhanh gửi qua Zalo/Messenger.
+
 ---
 
 ## 🛠️ Công Nghệ & Thư Viện Sử Dụng (Tech Stack)
@@ -72,7 +77,7 @@ graph TD
     App["📱 SpendTogether App (Jetpack Compose UI)"]
     
     subgraph UI_Layer ["Lớp Giao Diện (Presentation Layer)"]
-        Screens["15 Jetpack Compose Screens"]
+        Screens["16 Jetpack Compose Screens"]
         M3["Material Design 3 Components"]
         Theme["Nhoms8Theme (Color, Type, Shape)"]
     end
@@ -128,13 +133,15 @@ Nhoms8/
 │   │   │   │   ├── TransactionHistoryScreen.kt   # Lịch sử giao dịch & Bộ lọc
 │   │   │   │   ├── FinancialReportScreen.kt      # Báo cáo & Thống kê tài chính
 │   │   │   │   ├── ProfileScreen.kt              # Trang cá nhân & Cài đặt
+│   │   │   │   ├── ChatbotScreen.kt              # 🤖 Trợ lý ảo AI FinSprout (Smart Chatbot)
 │   │   │   │   ├── algorithm/                    # FintechAlgorithm (Min Cash Flow & Chia tiền)
-│   │   │   │   ├── data/                         # SpendTogetherRepository (Quản lý StateFlow)
-│   │   │   │   ├── model/                        # Data Models (UserProfile, Budget, Transaction)
+│   │   │   │   ├── data/                         # SpendTogetherRepository & FirebaseAuthRepository
+│   │   │   │   ├── model/                        # Data Models (UserProfile, Budget, ChatMessage)
 │   │   │   │   ├── viewmodel/                    # SpendTogetherViewModel & SpendTogetherUiState
+│   │   │   │   ├── ui/preview/                   # SpendTogetherAllScreensPreview (Bộ sưu tập 16 Preview)
 │   │   │   │   └── ui/theme/                     # Color, Theme, Type Material 3
 │   │   │   └── res/                              # Resources (Layouts, Drawables, Values)
-│   │   └── test/                                 # Unit Tests (FintechAlgorithmTest)
+│   │   └── test/                                 # Unit Tests (FintechAlgorithmTest, ChatbotViewModelTest)
 │   └── build.gradle.kts                          # Cấu hình build module app
 ├── lib/                                          # Module JVM xử lý thuật toán
 ├── gradle/

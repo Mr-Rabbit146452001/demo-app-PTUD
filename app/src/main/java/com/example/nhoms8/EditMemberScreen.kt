@@ -26,7 +26,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,9 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
@@ -165,11 +162,7 @@ fun EditMemberScreen(
                         letterSpacing = (-0.3).sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "Cập nhật thông tin của $memberName",
-                        fontSize = 13.sp,
-                        color = textMuted
-                    )
+
                 }
             }
 
@@ -445,43 +438,7 @@ fun EditMemberScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // Icon tài liệu ghi chép
-                        DocumentNoteIcon(
-                            color = Color(0xFF7A9486),
-                            modifier = Modifier.size(24.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
-                        Column {
-                            Text(
-                                text = "Có thể thêm khoản chi",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = forestGreenDark
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Thành viên được ghi chi tiêu vào quỹ",
-                                fontSize = 12.5.sp,
-                                color = textMuted
-                            )
-                        }
-                    }
-
                     Spacer(modifier = Modifier.width(8.dp))
-
-                    // Trạng thái toggle text
-                    Text(
-                        text = if (canAddExpense) "Đang bật" else "Đang tắt",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (canAddExpense) activeToggleGreen else Color(0xFF9EABA3)
-                    )
                 }
             }
 

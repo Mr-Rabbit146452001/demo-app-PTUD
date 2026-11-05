@@ -7,13 +7,14 @@ import com.example.nhoms8.RecentTransaction
 import com.example.nhoms8.SplitMemberItem
 import com.example.nhoms8.TransactionDateGroup
 import com.example.nhoms8.model.BudgetState
+import com.example.nhoms8.model.ChatMessage
 import com.example.nhoms8.model.DraftExpense
 import com.example.nhoms8.model.TransactionFilter
 import com.example.nhoms8.model.UserProfile
 
 /**
  * Trạng thái UI tổng hợp (SpendTogetherUiState)
- * Cung cấp luồng dữ liệu phản ứng tức thì (StateFlow) cho 15 màn hình Compose
+ * Cung cấp luồng dữ liệu phản ứng tức thì (StateFlow) cho các màn hình Compose
  */
 data class SpendTogetherUiState(
     val userProfile: UserProfile = UserProfile(),
@@ -33,5 +34,13 @@ data class SpendTogetherUiState(
     val authLoading: Boolean = false,
     val authErrorMessage: String? = null,
     val authSuccessMessage: String? = null,
-    val firebaseUserEmail: String? = null
+    val firebaseUserEmail: String? = null,
+    val chatMessages: List<ChatMessage> = listOf(
+        ChatMessage(
+            text = "Chào bạn! Mình là FinSprout 🌱 - Trợ lý AI của SpendTogether. Mình có thể giúp bạn ghi nhanh chi tiêu bằng lời nói, kiểm tra quỹ nhóm hoặc gợi ý tin nhắn đòi nợ khéo léo. Bạn cần hỗ trợ gì hôm nay?",
+            isFromUser = false,
+            timestampFormatted = "Vừa xong"
+        )
+    ),
+    val isChatbotTyping: Boolean = false
 )

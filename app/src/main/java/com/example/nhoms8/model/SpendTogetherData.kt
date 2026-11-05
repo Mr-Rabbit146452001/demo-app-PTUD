@@ -107,3 +107,39 @@ data class TransactionFilter(
     val selectedMemberId: String? = null,
     val selectedMonth: String = "Tháng 10"
 )
+
+/**
+ * Thẻ khoản chi được AI trích xuất từ câu thoại tự nhiên của người dùng
+ */
+data class ChatExpenseProposal(
+    val title: String,
+    val amount: Long,
+    val amountFormatted: String,
+    val category: ExpenseCategory = ExpenseCategory.FOOD,
+    val categoryName: String = "Ăn uống",
+    val payerName: String = "Minh Anh",
+    val splitSummary: String = "Chia đều cho cả nhóm",
+    val isConfirmed: Boolean = false
+)
+
+/**
+ * Thẻ gợi ý tin nhắn nhắc nợ vui vẻ, lịch sự
+ */
+data class ChatReminderProposal(
+    val recipientName: String,
+    val amountFormatted: String,
+    val suggestedMessage: String,
+    val isCopied: Boolean = false
+)
+
+/**
+ * Tin nhắn trong cuộc trò chuyện với Trợ lý FinSprout AI
+ */
+data class ChatMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val text: String,
+    val isFromUser: Boolean,
+    val timestampFormatted: String = "Vừa xong",
+    val expenseProposal: ChatExpenseProposal? = null,
+    val reminderProposal: ChatReminderProposal? = null
+)

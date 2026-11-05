@@ -2,9 +2,7 @@ package com.example.nhoms8
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -50,7 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -161,22 +157,10 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(28.dp))
 
                 // ====================== 2. TIÊU ĐỀ & PHỤ ĐỀ ======================
-                Text(
-                    text = "Chào bạn trở lại",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = forestGreenDark,
-                    letterSpacing = (-0.5).sp
-                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Text(
-                    text = "Đăng nhập để tiếp tục quản lý quỹ Nhà Mình.",
-                    fontSize = 14.5.sp,
-                    color = textMuted,
-                    lineHeight = 21.sp
-                )
+
 
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -312,18 +296,9 @@ fun LoginScreen(
                             .clickable { rememberMe = !rememberMe }
                             .padding(vertical = 4.dp)
                     ) {
-                        Text(
-                            text = if (rememberMe) "✓" else "○",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (rememberMe) sageGreen else textMuted
-                        )
+
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Ghi nhớ đăng nhập",
-                            fontSize = 13.sp,
-                            color = textMuted
-                        )
+
                     }
 
                     // Nút Quên mật khẩu
@@ -471,38 +446,6 @@ fun LoginScreen(
                         }
                     }
 
-                    // Nút Apple
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .shadow(
-                                elevation = 4.dp,
-                                shape = CircleShape,
-                                ambientColor = Color.Black.copy(alpha = 0.06f),
-                                spotColor = Color.Black.copy(alpha = 0.08f)
-                            )
-                            .background(Color.White, CircleShape)
-                            .clickable { onAppleLoginClicked() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            AppleIcon(
-                                color = Color(0xFF1E293B),
-                                modifier = Modifier.size(19.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Apple",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF1E293B)
-                            )
-                        }
-                    }
                 }
             }
 
@@ -735,14 +678,7 @@ private fun AppleIcon(
         val cy = h * 0.55f
 
         // Lá quả táo
-        drawArc(
-            color = color,
-            startAngle = 200f,
-            sweepAngle = 100f,
-            useCenter = true,
-            topLeft = Offset(cx - 1.dp.toPx(), h * 0.08f),
-            size = Size(6.dp.toPx(), 8.dp.toPx())
-        )
+
 
         // Thân quả táo
         val appleBody = Path().apply {

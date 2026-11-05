@@ -97,6 +97,7 @@ fun HomeScreen(
     onMembersClicked: () -> Unit = {},
     onViewAllTransactionsClicked: () -> Unit = {},
     onTransactionClicked: (RecentTransaction) -> Unit = {},
+    onChatbotClicked: () -> Unit = {},
     onNavTabSelected: (BottomNavTab) -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf(BottomNavTab.HOME) }
@@ -460,6 +461,50 @@ fun HomeScreen(
                     onNavTabSelected(it)
                 }
             )
+        }
+
+        // ====================== NÚT NỔI FAB TRỢ LÝ AI FINSPROUT ======================
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 76.dp, end = 16.dp)
+        ) {
+            Surface(
+                onClick = onChatbotClicked,
+                shape = RoundedCornerShape(24.dp),
+                color = forestGreenDark,
+                shadowElevation = 8.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2E6349))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2E6349)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "🌱", fontSize = 13.sp)
+                    }
+                    Text(
+                        text = "Hỏi FinSprout",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    // Chấm xanh AI trực tuyến
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF4ADE80))
+                    )
+                }
+            }
         }
     }
 }

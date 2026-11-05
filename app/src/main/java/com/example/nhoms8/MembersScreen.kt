@@ -76,6 +76,7 @@ fun MembersScreen(
     groupTitle: String = "Thành viên",
     groupSubtitle: String = "5 người trong quỹ Nhà Mình",
     totalContributedAmount: String = "21.500.000 đ",
+    membersList: List<GroupMember>? = null,
     onBackClicked: () -> Unit = {},
     onAddMemberClicked: () -> Unit = {},
     onMemberClicked: (GroupMember) -> Unit = {}
@@ -90,7 +91,7 @@ fun MembersScreen(
     val balancedGreen = Color(0xFF4A725E)        // Màu trạng thái đã cân bằng
 
     // Danh sách 5 thành viên mẫu theo thiết kế
-    val members = remember {
+    val defaultMembers = remember {
         listOf(
             GroupMember(
                 id = "1",
@@ -139,6 +140,8 @@ fun MembersScreen(
             )
         )
     }
+
+    val members = membersList ?: defaultMembers
 
     Box(
         modifier = Modifier

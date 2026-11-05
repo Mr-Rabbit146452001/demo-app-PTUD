@@ -19,7 +19,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nhoms8.ui.theme.Nhoms8Theme
+import com.example.nhoms8.viewmodel.SpendTogetherViewModel
 
 /**
  * Các màn hình chính trong chuỗi Onboarding, Auth & Dashboard ứng dụng SpendTogether
@@ -54,11 +57,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Ứng dụng SpendTogether kết nối trọn vẹn ViewModel & StateFlow cho 15 màn hình Jetpack Compose
+ */
 @Composable
-fun SpendTogetherApp() {
+fun SpendTogetherApp(
+    viewModel: SpendTogetherViewModel = viewModel()
+) {
     val context = LocalContext.current
-    // Mặc định hiển thị Màn hình Cá nhân và cài đặt (15 · Profile) để kiểm tra giao diện mới nhất
-    var currentScreen by remember { mutableStateOf(AppScreen.PROFILE) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // Màn hình bắt đầu: HOME (Tổng quan quỹ nhóm) để trải nghiệm dữ liệu tức thì
+    var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
 
     Surface(modifier = Modifier.fillMaxSize()) {
         Crossfade(
@@ -118,6 +128,7 @@ fun SpendTogetherApp() {
                 AppScreen.LOGIN -> {
                     LoginScreen(
                         onLoginSuccess = {
+                            viewModel.onLogin("0912 345 678", "Nguyễn Minh Anh")
                             Toast.makeText(context, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.HOME
                         },
@@ -125,14 +136,16 @@ fun SpendTogetherApp() {
                             currentScreen = AppScreen.SIGN_UP
                         },
                         onForgotPasswordClicked = {
-                            Toast.makeText(context, "Tính năng Quên mật khẩu", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Mã khôi phục đã gửi qua SMS", Toast.LENGTH_SHORT).show()
                         },
                         onGoogleLoginClicked = {
-                            Toast.makeText(context, "Đăng nhập với Google", Toast.LENGTH_SHORT).show()
+                            viewModel.onLogin("0912 345 678", "Nguyễn Minh Anh (Google)")
+                            Toast.makeText(context, "Đăng nhập với Google thành công", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.HOME
                         },
                         onAppleLoginClicked = {
-                            Toast.makeText(context, "Đăng nhập với Apple", Toast.LENGTH_SHORT).show()
+                            viewModel.onLogin("0912 345 678", "Nguyễn Minh Anh (Apple)")
+                            Toast.makeText(context, "Đăng nhập với Apple thành công", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.HOME
                         }
                     )
@@ -144,6 +157,7 @@ fun SpendTogetherApp() {
                             currentScreen = AppScreen.LOGIN
                         },
                         onSignUpSuccess = {
+                            viewModel.onSignUp("Nguyễn Minh Anh", "0912 345 678")
                             Toast.makeText(context, "Đăng ký tài khoản thành công!", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.HOME
                         },
@@ -158,21 +172,23 @@ fun SpendTogetherApp() {
 
                 AppScreen.HOME -> {
                     HomeScreen(
-                        userName = "Minh Anh",
-                        userInitials = "MA",
-                        groupName = "Quỹ Nhà Mình",
-                        totalBalance = "12.680.000 đ",
-                        monthLabel = "Tháng 10",
-                        depositedAmount = "8.500.000 đ",
-                        spentAmount = "5.820.000 đ",
+                        userName = uiState.userProfile.name,
+                        userInitials = uiState.userProfile.initials,
+                        groupName = uiState.userProfile.groupName,
+                        totalBalance = uiState.budget.totalBalanceFormatted,
+                        monthLabel = uiState.budget.monthLabel,
+                        depositedAmount = uiState.budget.depositedAmountFormatted,
+                        spentAmount = uiState.budget.spentAmountFormatted,
+                        recentTransactions = uiState.recentTransactions,
                         onNotificationClicked = {
-                            Toast.makeText(context, "Thông báo mới", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Bạn có ${uiState.unpaidDebtsCount} khoản nợ cần quyết toán", Toast.LENGTH_SHORT).show()
                         },
                         onAddExpenseClicked = {
                             currentScreen = AppScreen.CREATE_EXPENSE
                         },
                         onTopUpFundClicked = {
-                            Toast.makeText(context, "Nạp tiền vào quỹ", Toast.LENGTH_SHORT).show()
+                            viewModel.onTopUpFund(1000000L)
+                            Toast.makeText(context, "Đã nạp +1.000.000 đ vào quỹ nhóm!", Toast.LENGTH_SHORT).show()
                         },
                         onSplitBillClicked = {
                             currentScreen = AppScreen.SPLIT_BILL
@@ -184,7 +200,7 @@ fun SpendTogetherApp() {
                             currentScreen = AppScreen.HISTORY
                         },
                         onTransactionClicked = { tx ->
-                            Toast.makeText(context, "Chi tiết: ${tx.title}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Chi tiết: ${tx.title} (${tx.amountFormatted})", Toast.LENGTH_SHORT).show()
                         },
                         onNavTabSelected = { tab ->
                             when (tab) {
@@ -200,26 +216,31 @@ fun SpendTogetherApp() {
                 AppScreen.MEMBERS -> {
                     MembersScreen(
                         groupTitle = "Thành viên",
-                        groupSubtitle = "5 người trong quỹ Nhà Mình",
-                        totalContributedAmount = "21.500.000 đ",
+                        groupSubtitle = "${uiState.members.size} người trong ${uiState.userProfile.groupName}",
+                        totalContributedAmount = uiState.totalContributedAmount,
+                        membersList = uiState.members,
                         onBackClicked = {
                             currentScreen = AppScreen.HOME
                         },
                         onAddMemberClicked = {
-                            Toast.makeText(context, "Mở form thêm thành viên mới", Toast.LENGTH_SHORT).show()
+                            val newNumber = (100..999).random()
+                            viewModel.onAddMember("Thành viên mới $newNumber", "09$newNumber 888")
+                            Toast.makeText(context, "Đã thêm thành viên mới!", Toast.LENGTH_SHORT).show()
                         },
                         onMemberClicked = { member ->
+                            viewModel.onSelectMemberForEdit(member)
                             currentScreen = AppScreen.EDIT_MEMBER
                         }
                     )
                 }
 
                 AppScreen.EDIT_MEMBER -> {
+                    val activeMember = uiState.selectedMember ?: uiState.members.firstOrNull()
                     EditMemberScreen(
-                        initialMemberName = "Tuấn Nam",
-                        initialInitials = "TN",
-                        initialPhoneNumber = "0986 420 115",
-                        initialIsLeader = false,
+                        initialMemberName = activeMember?.name ?: "Tuấn Nam",
+                        initialInitials = activeMember?.initials ?: "TN",
+                        initialPhoneNumber = activeMember?.phoneNumber ?: "0986 420 115",
+                        initialIsLeader = activeMember?.isLeader ?: false,
                         initialCanAddExpense = true,
                         onBackClicked = {
                             currentScreen = AppScreen.MEMBERS
@@ -228,11 +249,13 @@ fun SpendTogetherApp() {
                             Toast.makeText(context, "Chọn ảnh đại diện mới", Toast.LENGTH_SHORT).show()
                         },
                         onSaveClicked = { name, phone, isLeader, canAddExpense ->
+                            viewModel.onSaveMember(name, phone, isLeader, canAddExpense)
                             Toast.makeText(context, "Đã lưu thông tin của $name", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.MEMBERS
                         },
                         onDeleteMemberClicked = {
-                            Toast.makeText(context, "Đã xóa Tuấn Nam khỏi nhóm", Toast.LENGTH_SHORT).show()
+                            activeMember?.let { viewModel.onDeleteMember(it.id) }
+                            Toast.makeText(context, "Đã xóa ${activeMember?.name} khỏi nhóm", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.MEMBERS
                         }
                     )
@@ -241,7 +264,7 @@ fun SpendTogetherApp() {
                 AppScreen.CREATE_EXPENSE -> {
                     CreateExpenseScreen(
                         groupTitle = "Tạo khoản chi",
-                        groupSubtitle = "Ghi vào quỹ Nhà Mình",
+                        groupSubtitle = "Ghi vào ${uiState.userProfile.groupName}",
                         initialAmount = "850.000",
                         initialAmountInWords = "Tám trăm năm mươi nghìn đồng",
                         onBackClicked = {
@@ -251,6 +274,7 @@ fun SpendTogetherApp() {
                             Toast.makeText(context, "Tính năng Quét hóa đơn OCR", Toast.LENGTH_SHORT).show()
                         },
                         onSaveAndSplitClicked = { amount, category, note ->
+                            viewModel.onCreateExpenseDraft(amount, category, note)
                             Toast.makeText(context, "Đã lưu khoản chi $amount đ [$category]", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.SPLIT_BILL
                         }
@@ -259,8 +283,12 @@ fun SpendTogetherApp() {
 
                 AppScreen.SPLIT_BILL -> {
                     SplitBillScreen(
-                        expenseTitle = "Đi chợ cuối tuần",
-                        totalAmount = 850000L,
+                        expenseTitle = uiState.draftExpense.title,
+                        totalAmount = uiState.draftExpense.amount,
+                        splitMembers = uiState.splitMembers,
+                        onToggleMember = { memberId ->
+                            viewModel.onToggleSplitMember(memberId)
+                        },
                         onBackClicked = {
                             currentScreen = AppScreen.HOME
                         },
@@ -268,6 +296,7 @@ fun SpendTogetherApp() {
                             Toast.makeText(context, "Mở máy tính tính nhẩm", Toast.LENGTH_SHORT).show()
                         },
                         onConfirmSplitClicked = { count, perPerson ->
+                            viewModel.onConfirmSplitBill(count, perPerson)
                             Toast.makeText(context, "Đã chia $perPerson đ cho $count người!", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.SETTLEMENT
                         }
@@ -277,7 +306,12 @@ fun SpendTogetherApp() {
                 AppScreen.SETTLEMENT -> {
                     SettlementScreen(
                         groupTitle = "Ai nợ ai?",
-                        groupSubtitle = "Quyết toán quỹ Nhà Mình",
+                        groupSubtitle = "Quyết toán ${uiState.userProfile.groupName}",
+                        debtsList = uiState.debts,
+                        autoReminder = uiState.autoReminderEnabled,
+                        onToggleAutoReminder = {
+                            viewModel.onToggleAutoReminder(it)
+                        },
                         onBackClicked = {
                             currentScreen = AppScreen.HOME
                         },
@@ -285,15 +319,17 @@ fun SpendTogetherApp() {
                             currentScreen = AppScreen.HISTORY
                         },
                         onSettleDebtClicked = { debt ->
-                            Toast.makeText(context, "Đã ghi nhận trả nợ cho ${debt.debtorName}!", Toast.LENGTH_SHORT).show()
+                            viewModel.onSettleDebt(debt.id)
+                            Toast.makeText(context, "Đã xác nhận thanh toán cho ${debt.debtorName}!", Toast.LENGTH_SHORT).show()
                         }
                     )
                 }
 
                 AppScreen.HISTORY -> {
                     TransactionHistoryScreen(
-                        totalTransactionsCount = 23,
-                        monthText = "Tháng 10/2026",
+                        totalTransactionsCount = uiState.recentTransactions.size,
+                        monthText = "${uiState.budget.monthLabel}/2026",
+                        transactionGroups = uiState.historyGroups,
                         onSearchClicked = {
                             Toast.makeText(context, "Mở thanh tìm kiếm giao dịch", Toast.LENGTH_SHORT).show()
                         },
@@ -307,6 +343,7 @@ fun SpendTogetherApp() {
                             Toast.makeText(context, "Lọc theo danh mục chi tiêu", Toast.LENGTH_SHORT).show()
                         },
                         onClearFilterClicked = {
+                            viewModel.onClearFilter()
                             Toast.makeText(context, "Đã xóa toàn bộ bộ lọc", Toast.LENGTH_SHORT).show()
                         },
                         onTransactionClicked = { tx ->
@@ -326,7 +363,10 @@ fun SpendTogetherApp() {
                 AppScreen.REPORTS -> {
                     FinancialReportScreen(
                         groupTitle = "Báo cáo",
-                        groupSubtitle = "Phân tích quỹ Nhà Mình",
+                        groupSubtitle = "Phân tích ${uiState.userProfile.groupName}",
+                        totalIncomeText = uiState.budget.depositedAmountFormatted.replace(" đ", ""),
+                        totalExpenseText = uiState.budget.spentAmountFormatted.replace(" đ", ""),
+                        totalBalanceText = uiState.budget.totalBalanceFormatted.replace(" đ", ""),
                         onExportReportClicked = {
                             Toast.makeText(context, "Đang xuất file báo cáo tài chính PDF...", Toast.LENGTH_SHORT).show()
                         },
@@ -349,15 +389,18 @@ fun SpendTogetherApp() {
 
                 AppScreen.PROFILE -> {
                     ProfileScreen(
-                        userName = "Nguyễn Minh Anh",
-                        userInitials = "MA",
-                        userSubtitle = "0912 345 678 · Trưởng nhóm",
-                        groupName = "Nhà Mình",
-                        groupSubtitle = "5 thành viên · 12.680.000 đ",
+                        userName = uiState.userProfile.name,
+                        userInitials = uiState.userProfile.initials,
+                        userSubtitle = "${uiState.userProfile.phoneNumber} · ${if (uiState.userProfile.isLeader) "Trưởng nhóm" else "Thành viên"}",
+                        groupName = uiState.userProfile.groupName,
+                        groupSubtitle = "${uiState.members.size} thành viên · ${uiState.budget.totalBalanceFormatted}",
                         onQrCodeClicked = {
                             Toast.makeText(context, "Mã QR nhận tiền quỹ", Toast.LENGTH_SHORT).show()
                         },
                         onEditProfileClicked = {
+                            uiState.members.find { it.id == uiState.userProfile.id }?.let {
+                                viewModel.onSelectMemberForEdit(it)
+                            }
                             currentScreen = AppScreen.EDIT_MEMBER
                         },
                         onChangeGroupClicked = {

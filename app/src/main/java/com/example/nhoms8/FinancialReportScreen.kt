@@ -55,6 +55,9 @@ import com.example.nhoms8.ui.theme.Nhoms8Theme
 fun FinancialReportScreen(
     groupTitle: String = "Báo cáo",
     groupSubtitle: String = "Phân tích quỹ Nhà Mình",
+    totalIncomeText: String = "8,50 tr",
+    totalExpenseText: String = "5,82 tr",
+    totalBalanceText: String = "12,68 tr",
     onExportReportClicked: () -> Unit = {},
     onFilterMonthClicked: () -> Unit = {},
     onCompareMonthClicked: () -> Unit = {},
@@ -231,7 +234,7 @@ fun FinancialReportScreen(
                     KpiSummaryCard(
                         modifier = Modifier.weight(1f),
                         title = "TỔNG THU",
-                        amount = "8,50 tr",
+                        amount = totalIncomeText,
                         subtitle = "↗ 12%",
                         amountColor = incomeGreen,
                         subtitleColor = incomeGreen,
@@ -243,7 +246,7 @@ fun FinancialReportScreen(
                     KpiSummaryCard(
                         modifier = Modifier.weight(1f),
                         title = "TỔNG CHI",
-                        amount = "5,82 tr",
+                        amount = totalExpenseText,
                         subtitle = "↗ 6%",
                         amountColor = expenseRed,
                         subtitleColor = expenseRed,
@@ -255,7 +258,7 @@ fun FinancialReportScreen(
                     KpiSummaryCard(
                         modifier = Modifier.weight(1f),
                         title = "SỐ DƯ",
-                        amount = "12,68 tr",
+                        amount = totalBalanceText,
                         subtitle = "An toàn",
                         amountColor = Color.White,
                         subtitleColor = Color(0xFFA5E2C4),

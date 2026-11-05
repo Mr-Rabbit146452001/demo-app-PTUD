@@ -81,6 +81,9 @@ data class DebtItem(
 fun SettlementScreen(
     groupTitle: String = "Ai nợ ai?",
     groupSubtitle: String = "Quyết toán quỹ Nhà Mình",
+    debtsList: List<DebtItem>? = null,
+    autoReminder: Boolean = true,
+    onToggleAutoReminder: (Boolean) -> Unit = {},
     onBackClicked: () -> Unit = {},
     onHistoryClicked: () -> Unit = {},
     onSettleDebtClicked: (DebtItem) -> Unit = {}
@@ -98,10 +101,10 @@ fun SettlementScreen(
     val disabledPillText = Color(0xFF5A6F65)     // Chữ nút đã thanh toán
 
     // Trạng thái bật/tắt nhắc nợ tự động
-    var autoReminderEnabled by remember { mutableStateOf(true) }
+    var autoReminderEnabled by remember(autoReminder) { mutableStateOf(autoReminder) }
 
     // Danh sách 3 khoản nợ mẫu theo đặc tả thiết kế
-    val debtItems = remember {
+    val defaultDebtItems = remember {
         mutableStateListOf(
             DebtItem(
                 id = "debt_1",
@@ -146,7 +149,8 @@ fun SettlementScreen(
     }
 
     // Tính toán số lượng và tổng tiền các khoản cần quyết toán
-    val pendingDebts = debtItems.filter { !it.isPaid }
+    val currentDebts = debtsList ?: defaultDebtItems
+    val pendingDebts = currentDebts.filter { !it.isPaid }
     val pendingCount = pendingDebts.size
     val totalPendingAmount = pendingDebts.sumOf { it.rawAmount }
     val formattedTotalPending = String.format("%,d đ", totalPendingAmount).replace(',', '.')
@@ -338,7 +342,7 @@ fun SettlementScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                debtItems.forEachIndexed { index, item ->
+                currentDebts.forEachIndexed { index, item ->
                     DebtSettlementCard(
                         item = item,
                         forestGreenDark = forestGreenDark,
@@ -349,12 +353,15 @@ fun SettlementScreen(
                         disabledPillBg = disabledPillBg,
                         disabledPillText = disabledPillText,
                         onSettleClicked = {
-                            // Chuyển đổi trạng thái trả nợ
-                            debtItems[index] = item.copy(
-                                isPaid = true,
-                                statusText = "Đã thanh toán vừa xong"
-                            )
-                            onSettleDebtClicked(debtItems[index])
+                            if (debtsList != null) {
+                                onSettleDebtClicked(item)
+                            } else {
+                                defaultDebtItems[index] = item.copy(
+                                    isPaid = true,
+                                    statusText = "Đã thanh toán vừa xong"
+                                )
+                                onSettleDebtClicked(defaultDebtItems[index])
+                            }
                         }
                     )
                 }
@@ -373,7 +380,10 @@ fun SettlementScreen(
                         spotColor = Color.Black.copy(alpha = 0.06f)
                     )
                     .background(Color.White, RoundedCornerShape(22.dp))
-                    .clickable { autoReminderEnabled = !autoReminderEnabled }
+                    .clickable {
+                        autoReminderEnabled = !autoReminderEnabled
+                        onToggleAutoReminder(autoReminderEnabled)
+                    }
                     .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
                 Row(
@@ -422,7 +432,10 @@ fun SettlementScreen(
                     // Công tắc Toggle Switch tùy biến
                     CustomToggleSwitch(
                         checked = autoReminderEnabled,
-                        onCheckedChange = { autoReminderEnabled = it },
+                        onCheckedChange = {
+                            autoReminderEnabled = it
+                            onToggleAutoReminder(it)
+                        },
                         activeTrackColor = forestGreenDark,
                         inactiveTrackColor = Color(0xFFD4DCD7)
                     )

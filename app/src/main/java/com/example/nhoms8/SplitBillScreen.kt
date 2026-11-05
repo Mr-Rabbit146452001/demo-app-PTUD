@@ -77,27 +77,32 @@ data class SplitMemberItem(
 fun SplitBillScreen(
     expenseTitle: String = "Đi chợ cuối tuần",
     totalAmount: Long = 850000L,
+    splitMembers: List<SplitMemberItem>? = null,
+    onToggleMember: ((String) -> Unit)? = null,
     onBackClicked: () -> Unit = {},
     onCalculatorClicked: () -> Unit = {},
     onConfirmSplitClicked: (selectedCount: Int, perPersonAmount: Long) -> Unit = { _, _ -> }
 ) {
     var selectedMode by remember { mutableStateOf(SplitMode.EQUAL) }
 
-    // Danh sách 5 thành viên tham gia chia tiền
-    var membersList by remember {
-        mutableStateOf(
-            listOf(
-                SplitMemberItem("1", "Minh Anh", "MA", Color(0xFFC4E2D3), true),
-                SplitMemberItem("2", "Lan Anh", "LA", Color(0xFFDEE7A8), true),
-                SplitMemberItem("3", "Tuấn Nam", "TN", Color(0xFFCBE3DC), true),
-                SplitMemberItem("4", "Hà My", "HM", Color(0xFFF2D7C8), true),
-                SplitMemberItem("5", "Quang Phúc", "QP", Color(0xFFD2DEC8), true)
-            )
+    // Danh sách thành viên tham gia chia tiền
+    val defaultMembers = remember {
+        listOf(
+            SplitMemberItem("1", "Minh Anh", "MA", Color(0xFFC4E2D3), true),
+            SplitMemberItem("2", "Lan Anh", "LA", Color(0xFFDEE7A8), true),
+            SplitMemberItem("3", "Tuấn Nam", "TN", Color(0xFFCBE3DC), true),
+            SplitMemberItem("4", "Hà My", "HM", Color(0xFFF2D7C8), true),
+            SplitMemberItem("5", "Quang Phúc", "QP", Color(0xFFD2DEC8), true)
         )
     }
 
+    var localMembersList by remember(splitMembers) {
+        mutableStateOf(splitMembers ?: defaultMembers)
+    }
+    val currentMembersList = splitMembers ?: localMembersList
+
     // Tính toán số tiền mỗi người dựa trên số người được chọn
-    val selectedMembersCount = membersList.count { it.isSelected }
+    val selectedMembersCount = currentMembersList.count { it.isSelected }
     val perPersonAmount = if (selectedMembersCount > 0) totalAmount / selectedMembersCount else 0L
 
     val formatter = remember { DecimalFormat("#,###") }
@@ -369,7 +374,7 @@ fun SplitBillScreen(
                             Spacer(modifier = Modifier.width(10.dp))
 
                             Text(
-                                text = if (selectedMembersCount == membersList.size) "Tất cả thành viên được chọn" else "Đã chọn $selectedMembersCount/${membersList.size} thành viên",
+                                text = if (selectedMembersCount == currentMembersList.size) "Tất cả thành viên được chọn" else "Đã chọn $selectedMembersCount/${currentMembersList.size} thành viên",
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Normal,
                                 color = textMuted
@@ -397,20 +402,24 @@ fun SplitBillScreen(
                     Column(
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        membersList.forEachIndexed { index, member ->
+                        currentMembersList.forEachIndexed { index, member ->
                             SplitMemberRow(
                                 member = member,
                                 displayAmount = formattedPerPerson,
                                 forestGreenDark = forestGreenDark,
                                 pillBoxBg = pillBoxBg,
                                 onToggleSelect = {
-                                    membersList = membersList.map {
-                                        if (it.id == member.id) it.copy(isSelected = !it.isSelected) else it
+                                    if (onToggleMember != null) {
+                                        onToggleMember(member.id)
+                                    } else {
+                                        localMembersList = localMembersList.map {
+                                            if (it.id == member.id) it.copy(isSelected = !it.isSelected) else it
+                                        }
                                     }
                                 }
                             )
 
-                            if (index < membersList.size - 1) {
+                            if (index < currentMembersList.size - 1) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(vertical = 10.dp),
                                     thickness = 0.8.dp,

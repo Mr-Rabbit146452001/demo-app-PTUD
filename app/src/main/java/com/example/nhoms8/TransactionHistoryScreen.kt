@@ -88,6 +88,7 @@ data class TransactionDateGroup(
 fun TransactionHistoryScreen(
     totalTransactionsCount: Int = 23,
     monthText: String = "Tháng 10/2026",
+    transactionGroups: List<TransactionDateGroup>? = null,
     onSearchClicked: () -> Unit = {},
     onFilterMemberClicked: () -> Unit = {},
     onFilterMonthClicked: () -> Unit = {},
@@ -108,7 +109,7 @@ fun TransactionHistoryScreen(
     val activePillBg = Color(0xFFCBE7D7)         // Nền pill active bottom nav
 
     // Dữ liệu mẫu 2 nhóm ngày giao dịch theo thiết kế
-    val groups = remember {
+    val defaultGroups = remember {
         listOf(
             TransactionDateGroup(
                 dateHeader = "Hôm nay, 03/10",
@@ -164,6 +165,8 @@ fun TransactionHistoryScreen(
             )
         )
     }
+
+    val displayGroups = transactionGroups ?: defaultGroups
 
     Box(
         modifier = Modifier
@@ -318,7 +321,7 @@ fun TransactionHistoryScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // ---------- 5. Danh sách các nhóm giao dịch theo ngày ----------
-                groups.forEachIndexed { groupIndex, group ->
+                displayGroups.forEachIndexed { groupIndex, group ->
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -375,7 +378,7 @@ fun TransactionHistoryScreen(
                         }
                     }
 
-                    if (groupIndex < groups.size - 1) {
+                    if (groupIndex < displayGroups.size - 1) {
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                 }

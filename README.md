@@ -112,7 +112,7 @@ Nhoms8/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/example/nhoms8/
-│   │   │   │   ├── MainActivity.kt               # Entry point & Bộ điều hướng màn hình
+│   │   │   │   ├── MainActivity.kt               # Entry point & Kết nối ViewModel StateFlow
 │   │   │   │   ├── WelcomeScreen.kt              # Màn hình Splash / Chào mừng
 │   │   │   │   ├── OnboardingScreen1.kt          # Onboarding giới thiệu tính năng 1
 │   │   │   │   ├── OnboardingScreen2.kt          # Onboarding giới thiệu tính năng 2
@@ -128,9 +128,13 @@ Nhoms8/
 │   │   │   │   ├── TransactionHistoryScreen.kt   # Lịch sử giao dịch & Bộ lọc
 │   │   │   │   ├── FinancialReportScreen.kt      # Báo cáo & Thống kê tài chính
 │   │   │   │   ├── ProfileScreen.kt              # Trang cá nhân & Cài đặt
+│   │   │   │   ├── algorithm/                    # FintechAlgorithm (Min Cash Flow & Chia tiền)
+│   │   │   │   ├── data/                         # SpendTogetherRepository (Quản lý StateFlow)
+│   │   │   │   ├── model/                        # Data Models (UserProfile, Budget, Transaction)
+│   │   │   │   ├── viewmodel/                    # SpendTogetherViewModel & SpendTogetherUiState
 │   │   │   │   └── ui/theme/                     # Color, Theme, Type Material 3
 │   │   │   └── res/                              # Resources (Layouts, Drawables, Values)
-│   │   └── test/                                 # Unit Tests
+│   │   └── test/                                 # Unit Tests (FintechAlgorithmTest)
 │   └── build.gradle.kts                          # Cấu hình build module app
 ├── lib/                                          # Module JVM xử lý thuật toán
 ├── gradle/

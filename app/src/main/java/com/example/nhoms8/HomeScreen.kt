@@ -89,6 +89,7 @@ fun HomeScreen(
     monthLabel: String = "Tháng 10",
     depositedAmount: String = "8.500.000 đ",
     spentAmount: String = "5.820.000 đ",
+    recentTransactions: List<RecentTransaction>? = null,
     onNotificationClicked: () -> Unit = {},
     onAddExpenseClicked: () -> Unit = {},
     onTopUpFundClicked: () -> Unit = {},
@@ -432,14 +433,16 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
+                        val transactionsList = recentTransactions ?: sampleTransactions
+
                         // Danh sách giao dịch
-                        sampleTransactions.forEachIndexed { index, item ->
+                        transactionsList.forEachIndexed { index, item ->
                             TransactionRowItem(
                                 transaction = item,
                                 onClick = { onTransactionClicked(item) }
                             )
 
-                            if (index < sampleTransactions.size - 1) {
+                            if (index < transactionsList.size - 1) {
                                 Spacer(modifier = Modifier.height(14.dp))
                             }
                         }

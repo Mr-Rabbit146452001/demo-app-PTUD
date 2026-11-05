@@ -62,9 +62,12 @@ import com.example.nhoms8.ui.theme.Nhoms8Theme
  */
 @Composable
 fun LoginScreen(
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
     onLoginSuccess: () -> Unit = {},
+    onLoginSubmit: (emailOrPhone: String, password: String) -> Unit = { _, _ -> },
     onRegisterClicked: () -> Unit = {},
-    onForgotPasswordClicked: () -> Unit = {},
+    onForgotPasswordClicked: (emailOrPhone: String) -> Unit = {},
     onGoogleLoginClicked: () -> Unit = {},
     onAppleLoginClicked: () -> Unit = {}
 ) {
@@ -330,16 +333,39 @@ fun LoginScreen(
                         fontWeight = FontWeight.Medium,
                         color = sageGreen,
                         modifier = Modifier
-                            .clickable { onForgotPasswordClicked() }
+                            .clickable { onForgotPasswordClicked(phoneInput) }
                             .padding(vertical = 4.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                if (!errorMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFFDE8E8), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            fontSize = 13.sp,
+                            color = Color(0xFFC81E1E),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // ====================== 4. NÚT ĐĂNG NHẬP CHÍNH ======================
                 Button(
-                    onClick = { onLoginSuccess() },
+                    onClick = {
+                        if (!isLoading) {
+                            onLoginSubmit(phoneInput, passwordInput)
+                            onLoginSuccess()
+                        }
+                    },
+                    enabled = !isLoading,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(54.dp)
@@ -350,7 +376,9 @@ fun LoginScreen(
                         ),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = forestGreenDark,
-                        contentColor = Color.White
+                        contentColor = Color.White,
+                        disabledContainerColor = forestGreenDark.copy(alpha = 0.6f),
+                        disabledContentColor = Color.White.copy(alpha = 0.8f)
                     ),
                     shape = CircleShape
                 ) {
@@ -358,17 +386,26 @@ fun LoginScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        RightArrowIcon(
-                            color = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Đăng nhập",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
+                        if (isLoading) {
+                            Text(
+                                text = "Đang xác thực Firebase...",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        } else {
+                            RightArrowIcon(
+                                color = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Đăng nhập",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
 

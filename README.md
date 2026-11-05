@@ -30,7 +30,7 @@ Giao diện ứng dụng được phát triển 100% bằng **Jetpack Compose** 
 
 ### 1. Khám Phá & Xác Thực (Onboarding & Authentication)
 - Chuỗi 3 màn hình Onboarding sinh động giải thích giá trị cốt lõi của ứng dụng.
-- Đăng nhập, Đăng ký bảo mật, hỗ trợ ghi nhớ phiên đăng nhập.
+- **Tích hợp Firebase Authentication:** Đăng ký và Đăng nhập bảo mật qua Firebase (Email/Password), hỗ trợ chuyển đổi linh hoạt định danh số điện thoại, khôi phục mật khẩu qua email, và tự động duy trì phiên đăng nhập.
 
 ### 2. Trang Chủ Thông Minh (Dashboard)
 - Hiển thị số dư hiện tại, tổng thu, tổng chi tiêu trong tháng.

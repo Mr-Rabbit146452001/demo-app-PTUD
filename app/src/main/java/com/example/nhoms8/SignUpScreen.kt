@@ -61,8 +61,11 @@ import com.example.nhoms8.ui.theme.Nhoms8Theme
  */
 @Composable
 fun SignUpScreen(
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
     onBackClicked: () -> Unit = {},
     onSignUpSuccess: () -> Unit = {},
+    onSignUpSubmit: (name: String, emailOrPhone: String, password: String) -> Unit = { _, _, _ -> },
     onLoginClicked: () -> Unit = {},
     onPickAvatarClicked: () -> Unit = {}
 ) {
@@ -490,11 +493,44 @@ fun SignUpScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            var localError by remember { mutableStateOf<String?>(null) }
+            val activeError = errorMessage ?: localError
+
+            if (!activeError.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFDE8E8), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = activeError,
+                        fontSize = 13.sp,
+                        color = Color(0xFFC81E1E),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             // ====================== 6. NÚT TẠO TÀI KHOẢN ======================
             Button(
-                onClick = { onSignUpSuccess() },
+                onClick = {
+                    if (password != confirmPassword) {
+                        localError = "Mật khẩu xác nhận không khớp!"
+                        return@Button
+                    }
+                    if (!agreeToTerms) {
+                        localError = "Vui lòng đồng ý với Điều khoản dịch vụ"
+                        return@Button
+                    }
+                    localError = null
+                    onSignUpSubmit(fullName, phoneNumber, password)
+                    onSignUpSuccess()
+                },
+                enabled = !isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp)
@@ -505,7 +541,9 @@ fun SignUpScreen(
                     ),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = forestGreenDark,
-                    contentColor = Color.White
+                    contentColor = Color.White,
+                    disabledContainerColor = forestGreenDark.copy(alpha = 0.6f),
+                    disabledContentColor = Color.White.copy(alpha = 0.8f)
                 ),
                 shape = CircleShape
             ) {
@@ -513,17 +551,26 @@ fun SignUpScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    SparkleIcon(
-                        color = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Tạo tài khoản",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
+                    if (isLoading) {
+                        Text(
+                            text = "Đang tạo tài khoản Firebase...",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    } else {
+                        SparkleIcon(
+                            color = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Tạo tài khoản",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    }
                 }
             }
 

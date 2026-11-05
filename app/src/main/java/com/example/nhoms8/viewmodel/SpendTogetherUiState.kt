@@ -29,5 +29,9 @@ data class SpendTogetherUiState(
     val splitMembers: List<SplitMemberItem> = emptyList(),
     val totalContributedAmount: String = "21.500.000 đ",
     val unpaidDebtsCount: Int = 0,
-    val totalUnpaidDebtFormatted: String = "0 đ"
+    val totalUnpaidDebtFormatted: String = "0 đ",
+    val authLoading: Boolean = false,
+    val authErrorMessage: String? = null,
+    val authSuccessMessage: String? = null,
+    val firebaseUserEmail: String? = null
 )

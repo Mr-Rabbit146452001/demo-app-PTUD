@@ -8,23 +8,42 @@ import com.example.nhoms8.SplitMemberItem
 import com.example.nhoms8.SplitMode
 import com.example.nhoms8.TransactionDateGroup
 import com.example.nhoms8.algorithm.FintechAlgorithm
+import com.example.nhoms8.data.AuthResult
+import com.example.nhoms8.data.FirebaseAuthRepository
 import com.example.nhoms8.data.SpendTogetherRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * ViewModel trung tâm cho toàn bộ 15 màn hình Jetpack Compose (SpendTogetherViewModel)
- * Tuân thủ kiến trúc Clean Architecture & State Hoisting
+ * Tích hợp Firebase Authentication & StateFlow
  */
 class SpendTogetherViewModel(
-    private val repository: SpendTogetherRepository = SpendTogetherRepository()
+    private val repository: SpendTogetherRepository = SpendTogetherRepository(),
+    private val firebaseAuthRepository: FirebaseAuthRepository = FirebaseAuthRepository()
 ) : ViewModel() {
 
     // Danh sách thành viên tham gia chia tiền tại màn hình SplitBill
     private val _splitSelection = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+
+    // Trạng thái Firebase Authentication
+    private val _authLoading = MutableStateFlow(false)
+    private val _authErrorMessage = MutableStateFlow<String?>(null)
+    private val _authSuccessMessage = MutableStateFlow<String?>(null)
+    private val _firebaseUserEmail = MutableStateFlow<String?>(firebaseAuthRepository.getCurrentUser()?.email)
+
+    init {
+        // Tự động đồng bộ tài khoản Firebase nếu đã đăng nhập từ trước
+        firebaseAuthRepository.getCurrentUser()?.let { user ->
+            val email = user.email ?: ""
+            val name = user.displayName ?: "Nguyễn Minh Anh"
+            repository.login(email, name)
+        }
+    }
 
     @Suppress("UNCHECKED_CAST")
     val uiState: StateFlow<SpendTogetherUiState> = combine(
@@ -37,7 +56,11 @@ class SpendTogetherViewModel(
         repository.draftExpense,
         repository.filter,
         repository.autoReminderEnabled,
-        _splitSelection
+        _splitSelection,
+        _authLoading,
+        _authErrorMessage,
+        _authSuccessMessage,
+        _firebaseUserEmail
     ) { params ->
         val userProfile = params[0] as com.example.nhoms8.model.UserProfile
         val members = params[1] as List<GroupMember>
@@ -49,6 +72,10 @@ class SpendTogetherViewModel(
         val filter = params[7] as com.example.nhoms8.model.TransactionFilter
         val autoReminder = params[8] as Boolean
         val splitSelectionMap = params[9] as Map<String, Boolean>
+        val authLoading = params[10] as Boolean
+        val authErrorMessage = params[11] as String?
+        val authSuccessMessage = params[12] as String?
+        val firebaseUserEmail = params[13] as String?
 
         // 1. Chuyển đổi giao dịch gần đây cho HomeScreen
         val recentTransactions = transactions.map { it.toRecentTransaction() }
@@ -104,13 +131,88 @@ class SpendTogetherViewModel(
             splitMembers = splitMembers,
             totalContributedAmount = "21.500.000 đ",
             unpaidDebtsCount = unpaidDebts.size,
-            totalUnpaidDebtFormatted = FintechAlgorithm.formatVnd(totalUnpaidAmount)
+            totalUnpaidDebtFormatted = FintechAlgorithm.formatVnd(totalUnpaidAmount),
+            authLoading = authLoading,
+            authErrorMessage = authErrorMessage,
+            authSuccessMessage = authSuccessMessage,
+            firebaseUserEmail = firebaseUserEmail
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SpendTogetherUiState()
     )
+
+    // ==================== XÁC THỰC FIREBASE AUTH ====================
+
+    fun signInWithFirebase(
+        emailOrPhone: String,
+        password: String,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _authLoading.value = true
+            _authErrorMessage.value = null
+            when (val result = firebaseAuthRepository.signIn(emailOrPhone, password)) {
+                is AuthResult.Success -> {
+                    _authLoading.value = false
+                    _firebaseUserEmail.value = result.user.email
+                    _authSuccessMessage.value = result.message
+                    val displayName = result.user.displayName ?: "Nguyễn Minh Anh"
+                    repository.login(emailOrPhone, displayName)
+                    onSuccess()
+                }
+                is AuthResult.Error -> {
+                    _authLoading.value = false
+                    _authErrorMessage.value = result.message
+                }
+            }
+        }
+    }
+
+    fun signUpWithFirebase(
+        name: String,
+        emailOrPhone: String,
+        password: String,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _authLoading.value = true
+            _authErrorMessage.value = null
+            when (val result = firebaseAuthRepository.signUp(emailOrPhone, password, name)) {
+                is AuthResult.Success -> {
+                    _authLoading.value = false
+                    _firebaseUserEmail.value = result.user.email
+                    _authSuccessMessage.value = result.message
+                    repository.login(emailOrPhone, name)
+                    repository.addMember(name, emailOrPhone, isLeader = false)
+                    onSuccess()
+                }
+                is AuthResult.Error -> {
+                    _authLoading.value = false
+                    _authErrorMessage.value = result.message
+                }
+            }
+        }
+    }
+
+    fun sendPasswordReset(emailOrPhone: String, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            when (val result = firebaseAuthRepository.sendPasswordReset(emailOrPhone)) {
+                is AuthResult.Success -> onDone(result.message)
+                is AuthResult.Error -> onDone(result.message)
+            }
+        }
+    }
+
+    fun signOutFromFirebase() {
+        firebaseAuthRepository.signOut()
+        _firebaseUserEmail.value = null
+    }
+
+    fun clearAuthError() {
+        _authErrorMessage.value = null
+    }
 
     // ==================== HÀNH ĐỘNG TƯƠNG TÁC (USER INTENTS) ====================
 
@@ -170,7 +272,7 @@ class SpendTogetherViewModel(
             amount = draft.amount,
             category = draft.category,
             note = draft.note,
-            payerId = "1", // Mặc định người trả là trưởng nhóm (Minh Anh)
+            payerId = "1",
             selectedMemberIds = selectedIds,
             mode = SplitMode.EQUAL
         )

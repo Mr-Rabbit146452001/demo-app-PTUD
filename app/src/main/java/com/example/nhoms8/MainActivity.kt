@@ -127,16 +127,22 @@ fun SpendTogetherApp(
 
                 AppScreen.LOGIN -> {
                     LoginScreen(
-                        onLoginSuccess = {
-                            viewModel.onLogin("0912 345 678", "Nguyễn Minh Anh")
-                            Toast.makeText(context, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show()
-                            currentScreen = AppScreen.HOME
+                        isLoading = uiState.authLoading,
+                        errorMessage = uiState.authErrorMessage,
+                        onLoginSubmit = { emailOrPhone, password ->
+                            viewModel.signInWithFirebase(emailOrPhone, password) {
+                                Toast.makeText(context, "Đăng nhập Firebase thành công!", Toast.LENGTH_SHORT).show()
+                                currentScreen = AppScreen.HOME
+                            }
                         },
                         onRegisterClicked = {
+                            viewModel.clearAuthError()
                             currentScreen = AppScreen.SIGN_UP
                         },
-                        onForgotPasswordClicked = {
-                            Toast.makeText(context, "Mã khôi phục đã gửi qua SMS", Toast.LENGTH_SHORT).show()
+                        onForgotPasswordClicked = { emailOrPhone ->
+                            viewModel.sendPasswordReset(emailOrPhone) { msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
                         },
                         onGoogleLoginClicked = {
                             viewModel.onLogin("0912 345 678", "Nguyễn Minh Anh (Google)")
@@ -153,15 +159,20 @@ fun SpendTogetherApp(
 
                 AppScreen.SIGN_UP -> {
                     SignUpScreen(
+                        isLoading = uiState.authLoading,
+                        errorMessage = uiState.authErrorMessage,
                         onBackClicked = {
+                            viewModel.clearAuthError()
                             currentScreen = AppScreen.LOGIN
                         },
-                        onSignUpSuccess = {
-                            viewModel.onSignUp("Nguyễn Minh Anh", "0912 345 678")
-                            Toast.makeText(context, "Đăng ký tài khoản thành công!", Toast.LENGTH_SHORT).show()
-                            currentScreen = AppScreen.HOME
+                        onSignUpSubmit = { name, emailOrPhone, password ->
+                            viewModel.signUpWithFirebase(name, emailOrPhone, password) {
+                                Toast.makeText(context, "Đăng ký tài khoản Firebase thành công!", Toast.LENGTH_SHORT).show()
+                                currentScreen = AppScreen.HOME
+                            }
                         },
                         onLoginClicked = {
+                            viewModel.clearAuthError()
                             currentScreen = AppScreen.LOGIN
                         },
                         onPickAvatarClicked = {
@@ -419,6 +430,7 @@ fun SpendTogetherApp(
                             Toast.makeText(context, "Trung tâm trợ giúp & hướng dẫn", Toast.LENGTH_SHORT).show()
                         },
                         onLogoutClicked = {
+                            viewModel.signOutFromFirebase()
                             Toast.makeText(context, "Đã đăng xuất tài khoản", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.LOGIN
                         },

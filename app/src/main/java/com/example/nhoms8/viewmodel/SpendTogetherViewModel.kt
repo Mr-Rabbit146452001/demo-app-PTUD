@@ -10,7 +10,9 @@ import com.example.nhoms8.TransactionDateGroup
 import com.example.nhoms8.algorithm.FintechAlgorithm
 import com.example.nhoms8.data.AuthResult
 import com.example.nhoms8.data.FirebaseAuthRepository
+import com.example.nhoms8.data.GeminiChatRepository
 import com.example.nhoms8.data.SpendTogetherRepository
+import com.example.nhoms8.model.BudgetState
 import com.example.nhoms8.model.ChatExpenseProposal
 import com.example.nhoms8.model.ChatMessage
 import com.example.nhoms8.model.ChatReminderProposal
@@ -29,7 +31,8 @@ import kotlinx.coroutines.launch
  */
 class SpendTogetherViewModel(
     private val repository: SpendTogetherRepository = SpendTogetherRepository(),
-    private val firebaseAuthRepository: FirebaseAuthRepository = FirebaseAuthRepository()
+    private val firebaseAuthRepository: FirebaseAuthRepository = FirebaseAuthRepository(),
+    private val geminiChatRepository: GeminiChatRepository = GeminiChatRepository()
 ) : ViewModel() {
 
     // Danh sách thành viên tham gia chia tiền tại màn hình SplitBill
@@ -335,149 +338,183 @@ class SpendTogetherViewModel(
 
         viewModelScope.launch {
             _isChatbotTyping.value = true
-            delay(500) // Tạo độ trễ tự nhiên giả lập phản hồi AI
-
             val currentBudget = repository.budget.value
-            val lower = trimmed.lowercase()
 
-            // 1. Phân tích tạo khoản chi ("ăn", "uống", "chi", "trả", "k", "đ", "tiền", "mua", "lẩu", "cà phê")
-            val amountRegex = Regex("(\\d+[.,]?\\d*)\\s*(k|nghìn|ngàn|tr|triệu|đ|vnd)?", RegexOption.IGNORE_CASE)
-            val match = amountRegex.findAll(trimmed).firstOrNull()
-            val detectedAmount: Long? = match?.let {
-                val numPart = it.groupValues[1].replace(",", "").replace(".", "").toDoubleOrNull() ?: return@let null
-                val unit = it.groupValues[2].lowercase()
-                when {
-                    unit == "k" || unit == "nghìn" || unit == "ngàn" -> (numPart * 1000).toLong()
-                    unit == "tr" || unit == "triệu" -> (numPart * 1000000).toLong()
-                    numPart < 1000 -> (numPart * 1000).toLong()
-                    else -> numPart.toLong()
+            // 1. Nếu đã cấu hình Google Gemini API Key trong local.properties: Gọi Gemini 1.5 Flash
+            if (geminiChatRepository.isApiKeyConfigured()) {
+                try {
+                    val currentMembers = repository.members.value.joinToString { "${it.name} (${if (it.isLeader) "Trưởng nhóm" else "Thành viên"})" }
+                    val contextPrompt = """
+                        • Nhóm: ${uiState.value.userProfile.groupName}
+                        • Số dư quỹ hiện tại: ${currentBudget.totalBalanceFormatted}
+                        • Đã chi tháng này: ${currentBudget.spentAmountFormatted} / ${currentBudget.monthlyLimitFormatted}
+                        • Danh sách thành viên: $currentMembers
+                        • Người dùng: ${uiState.value.userProfile.name}
+                    """.trimIndent()
+
+                    val geminiResult = geminiChatRepository.sendMessage(trimmed, contextPrompt)
+                    val botMessage = ChatMessage(
+                        text = geminiResult.cleanText,
+                        isFromUser = false,
+                        expenseProposal = geminiResult.expenseProposal,
+                        reminderProposal = geminiResult.reminderProposal
+                    )
+                    _chatMessages.update { it + botMessage }
+                    _isChatbotTyping.value = false
+                    return@launch
+                } catch (_: Exception) {
+                    // Nếu mạng chập chờn hoặc hết quota, tự động fallback sang bộ xử lý thông minh nội bộ
                 }
             }
 
-            val isExpenseIntent = (detectedAmount != null && detectedAmount > 0) &&
-                    (lower.contains("ăn") || lower.contains("uống") || lower.contains("chi") || lower.contains("trả") ||
-                            lower.contains("mua") || lower.contains("hết") || lower.contains("tiền") || lower.contains("lẩu") ||
-                            lower.contains("phở") || lower.contains("cơm") || lower.contains("cafe") || lower.contains("trà sữa") ||
-                            lower.contains("vé") || lower.contains("xe") || lower.contains("nhà") || lower.contains("đi chợ"))
-
-            val botResponse: ChatMessage = when {
-                isExpenseIntent -> {
-                    val category = when {
-                        lower.contains("nhà") || lower.contains("điện") || lower.contains("nước") || lower.contains("mạng") -> ExpenseCategory.HOUSING
-                        lower.contains("xe") || lower.contains("taxi") || lower.contains("xăng") || lower.contains("grab") -> ExpenseCategory.TRANSPORT
-                        lower.contains("mua") || lower.contains("quần") || lower.contains("áo") -> ExpenseCategory.OTHER
-                        else -> ExpenseCategory.FOOD
-                    }
-                    val categoryName = when (category) {
-                        ExpenseCategory.FOOD -> "Ăn uống"
-                        ExpenseCategory.HOUSING -> "Nhà ở & Tiện ích"
-                        ExpenseCategory.TRANSPORT -> "Đi lại & Di chuyển"
-                        ExpenseCategory.OTHER -> "Chi tiêu khác"
-                    }
-
-                    val payer = when {
-                        lower.contains("hùng") -> "Lê Văn Hùng"
-                        lower.contains("linh") -> "Lý Việt Linh"
-                        lower.contains("đạt") -> "Nguyễn Phan Tấn Đạt"
-                        lower.contains("bình") -> "Lê Trung Bình"
-                        lower.contains("nam") -> "Tuấn Nam"
-                        lower.contains("my") -> "Hà My"
-                        else -> uiState.value.userProfile.name
-                    }
-
-                    val title = when {
-                        lower.contains("lẩu") -> "Ăn lẩu nhóm"
-                        lower.contains("cà phê") || lower.contains("cafe") -> "Cà phê gặp mặt"
-                        lower.contains("trà sữa") -> "Trà sữa chiều"
-                        lower.contains("cơm") -> "Cơm trưa nhóm"
-                        lower.contains("bún bò") -> "Bún bò Huế trưa"
-                        lower.contains("đi chợ") || lower.contains("siêu thị") -> "Đi siêu thị đồ dùng"
-                        lower.contains("xăng") || lower.contains("xe") -> "Tiền xăng xe chung"
-                        else -> "Khoản chi mới (${categoryName})"
-                    }
-
-                    ChatMessage(
-                        text = "FinSprout đã nhận diện thông tin khoản chi! 🌿 Hãy kiểm tra lại và bấm Xác nhận lưu bên dưới nhé:",
-                        isFromUser = false,
-                        expenseProposal = ChatExpenseProposal(
-                            title = title,
-                            amount = detectedAmount,
-                            amountFormatted = FintechAlgorithm.formatVnd(detectedAmount),
-                            category = category,
-                            categoryName = categoryName,
-                            payerName = payer,
-                            splitSummary = "Chia đều cho cả nhóm",
-                            isConfirmed = false
-                        )
-                    )
-                }
-
-                // 2. Hỏi về tình hình quỹ / số dư
-                lower.contains("quỹ") || lower.contains("tiền còn") || lower.contains("ngân sách") || lower.contains("tình hình") || lower.contains("sống sót") || lower.contains("báo cáo") -> {
-                    val balanceStr = currentBudget.totalBalanceFormatted
-                    val spentStr = currentBudget.spentAmountFormatted
-                    val limitStr = currentBudget.monthlyLimitFormatted
-                    val percent = if (currentBudget.monthlyLimit > 0) (currentBudget.spentAmount * 100 / currentBudget.monthlyLimit) else 0
-
-                    ChatMessage(
-                        text = "📊 Báo cáo tài chính nhanh từ FinSprout:\n\n" +
-                                "• Số dư quỹ hiện tại: $balanceStr\n" +
-                                "• Đã chi trong tháng: $spentStr / $limitStr ($percent% hạn mức)\n" +
-                                "• Đánh giá: ${if (percent < 80) "Quỹ nhóm đang ở mức an toàn! Cả nhóm chi tiêu rất có kế hoạch. 🎉" else "Cảnh báo nhẹ: Đã chạm 80% hạn mức tháng, nhóm nên cân nhắc trước các buổi tiệc lớn nhé! ⚠️"}",
-                        isFromUser = false
-                    )
-                }
-
-                // 3. Nhắc nợ / đòi nợ
-                lower.contains("nhắc nợ") || lower.contains("đòi nợ") || lower.contains("nhắc tiền") || lower.contains("nợ") -> {
-                    val targetName = when {
-                        lower.contains("linh") -> "Linh"
-                        lower.contains("hùng") -> "Hùng"
-                        lower.contains("đạt") -> "Đạt"
-                        lower.contains("bình") -> "Bình"
-                        lower.contains("nam") -> "Nam"
-                        else -> "bạn"
-                    }
-
-                    val reminderText = "Ting ting! 🧋 $targetName ơi, hôm trước nhóm mình đi ăn chung vui quá. Phần chi phí của bạn là 120.000 đ nè. Khi nào tiện bạn chuyển khoản vào quỹ nhóm để thủ quỹ chốt sổ tháng nhé! Cảm ơn bạn nhiều ❤️"
-
-                    ChatMessage(
-                        text = "FinSprout đã soạn sẵn một mẫu nhắc nợ vừa dễ thương vừa tế nhị cho bạn này! Bạn có thể bấm sao chép để gửi ngay qua Zalo/Messenger nhé: 💌",
-                        isFromUser = false,
-                        reminderProposal = ChatReminderProposal(
-                            recipientName = targetName,
-                            amountFormatted = "120.000 đ",
-                            suggestedMessage = reminderText,
-                            isCopied = false
-                        )
-                    )
-                }
-
-                // 4. Mẹo tiết kiệm
-                lower.contains("mẹo") || lower.contains("tiết kiệm") || lower.contains("lời khuyên") -> {
-                    ChatMessage(
-                        text = "💡 3 Mẹo vàng tiết kiệm chi tiêu nhóm từ FinSprout:\n\n" +
-                                "1. Quy tắc 48h: Chờ 2 ngày trước khi quyết định mua sắm đồ dùng chung đắt tiền.\n" +
-                                "2. Chốt sổ định kỳ hàng tuần: Dùng tính năng Quyết toán nợ để giảm thiểu số lần chuyển tiền lòng vòng.\n" +
-                                "3. Đặt hạn mức cảnh báo: Theo dõi ngưỡng 80% ngân sách tại màn hình Báo cáo để tránh bị động cuối tháng!",
-                        isFromUser = false
-                    )
-                }
-
-                // 5. Mặc định
-                else -> {
-                    ChatMessage(
-                        text = "FinSprout luôn sẵn sàng hỗ trợ! 🌱 Bạn có thể thử các gợi ý bên dưới như:\n" +
-                                "• Nhắn 'Trưa nay ăn bún bò 180k Hùng trả' để ghi sổ tự động\n" +
-                                "• Hỏi 'Tình hình quỹ tháng này' để xem số dư tức thì\n" +
-                                "• Nhờ 'Viết tin nhắn nhắc nợ bạn Linh' để đòi tiền khéo léo!",
-                        isFromUser = false
-                    )
-                }
-            }
-
+            // 2. Chế độ dự phòng thông minh (Offline / Mock Intelligent Fallback)
+            delay(500)
+            val botResponse = processLocalSmartChat(trimmed, currentBudget)
             _chatMessages.update { it + botResponse }
             _isChatbotTyping.value = false
+        }
+    }
+
+    /**
+     * Bộ xử lý ngôn ngữ tự nhiên thông minh nội bộ (dự phòng khi không có mạng hoặc chưa nhập Gemini API Key)
+     */
+    private fun processLocalSmartChat(trimmed: String, currentBudget: BudgetState): ChatMessage {
+        val lower = trimmed.lowercase()
+
+        // Phân tích tạo khoản chi ("ăn", "uống", "chi", "trả", "k", "đ", "tiền", "mua", "lẩu", "cà phê")
+        val amountRegex = Regex("(\\d+[.,]?\\d*)\\s*(k|nghìn|ngàn|tr|triệu|đ|vnd)?", RegexOption.IGNORE_CASE)
+        val match = amountRegex.findAll(trimmed).firstOrNull()
+        val detectedAmount: Long? = match?.let {
+            val numPart = it.groupValues[1].replace(",", "").replace(".", "").toDoubleOrNull() ?: return@let null
+            val unit = it.groupValues[2].lowercase()
+            when {
+                unit == "k" || unit == "nghìn" || unit == "ngàn" -> (numPart * 1000).toLong()
+                unit == "tr" || unit == "triệu" -> (numPart * 1000000).toLong()
+                numPart < 1000 -> (numPart * 1000).toLong()
+                else -> numPart.toLong()
+            }
+        }
+
+        val isExpenseIntent = (detectedAmount != null && detectedAmount > 0) &&
+                (lower.contains("ăn") || lower.contains("uống") || lower.contains("chi") || lower.contains("trả") ||
+                        lower.contains("mua") || lower.contains("hết") || lower.contains("tiền") || lower.contains("lẩu") ||
+                        lower.contains("phở") || lower.contains("cơm") || lower.contains("cafe") || lower.contains("trà sữa") ||
+                        lower.contains("vé") || lower.contains("xe") || lower.contains("nhà") || lower.contains("đi chợ"))
+
+        return when {
+            isExpenseIntent -> {
+                val category = when {
+                    lower.contains("nhà") || lower.contains("điện") || lower.contains("nước") || lower.contains("mạng") -> ExpenseCategory.HOUSING
+                    lower.contains("xe") || lower.contains("taxi") || lower.contains("xăng") || lower.contains("grab") -> ExpenseCategory.TRANSPORT
+                    lower.contains("mua") || lower.contains("quần") || lower.contains("áo") -> ExpenseCategory.OTHER
+                    else -> ExpenseCategory.FOOD
+                }
+                val categoryName = when (category) {
+                    ExpenseCategory.FOOD -> "Ăn uống"
+                    ExpenseCategory.HOUSING -> "Nhà ở & Tiện ích"
+                    ExpenseCategory.TRANSPORT -> "Đi lại & Di chuyển"
+                    ExpenseCategory.OTHER -> "Chi tiêu khác"
+                }
+
+                val payer = when {
+                    lower.contains("hùng") -> "Lê Văn Hùng"
+                    lower.contains("linh") -> "Lý Việt Linh"
+                    lower.contains("đạt") -> "Nguyễn Phan Tấn Đạt"
+                    lower.contains("bình") -> "Lê Trung Bình"
+                    lower.contains("nam") -> "Tuấn Nam"
+                    lower.contains("my") -> "Hà My"
+                    else -> uiState.value.userProfile.name
+                }
+
+                val title = when {
+                    lower.contains("lẩu") -> "Ăn lẩu nhóm"
+                    lower.contains("cà phê") || lower.contains("cafe") -> "Cà phê gặp mặt"
+                    lower.contains("trà sữa") -> "Trà sữa chiều"
+                    lower.contains("cơm") -> "Cơm trưa nhóm"
+                    lower.contains("bún bò") -> "Bún bò Huế trưa"
+                    lower.contains("đi chợ") || lower.contains("siêu thị") -> "Đi siêu thị đồ dùng"
+                    lower.contains("xăng") || lower.contains("xe") -> "Tiền xăng xe chung"
+                    else -> "Khoản chi mới (${categoryName})"
+                }
+
+                ChatMessage(
+                    text = "FinSprout đã nhận diện thông tin khoản chi! 🌿 Hãy kiểm tra lại và bấm Xác nhận lưu bên dưới nhé:",
+                    isFromUser = false,
+                    expenseProposal = ChatExpenseProposal(
+                        title = title,
+                        amount = detectedAmount,
+                        amountFormatted = FintechAlgorithm.formatVnd(detectedAmount),
+                        category = category,
+                        categoryName = categoryName,
+                        payerName = payer,
+                        splitSummary = "Chia đều cho cả nhóm",
+                        isConfirmed = false
+                    )
+                )
+            }
+
+            // Hỏi về tình hình quỹ / số dư
+            lower.contains("quỹ") || lower.contains("tiền còn") || lower.contains("ngân sách") || lower.contains("tình hình") || lower.contains("sống sót") || lower.contains("báo cáo") -> {
+                val balanceStr = currentBudget.totalBalanceFormatted
+                val spentStr = currentBudget.spentAmountFormatted
+                val limitStr = currentBudget.monthlyLimitFormatted
+                val percent = if (currentBudget.monthlyLimit > 0) (currentBudget.spentAmount * 100 / currentBudget.monthlyLimit) else 0
+
+                ChatMessage(
+                    text = "📊 Báo cáo tài chính nhanh từ FinSprout:\n\n" +
+                            "• Số dư quỹ hiện tại: $balanceStr\n" +
+                            "• Đã chi trong tháng: $spentStr / $limitStr ($percent% hạn mức)\n" +
+                            "• Đánh giá: ${if (percent < 80) "Quỹ nhóm đang ở mức an toàn! Cả nhóm chi tiêu rất có kế hoạch. 🎉" else "Cảnh báo nhẹ: Đã chạm 80% hạn mức tháng, nhóm nên cân nhắc trước các buổi tiệc lớn nhé! ⚠️"}",
+                    isFromUser = false
+                )
+            }
+
+            // Nhắc nợ / đòi nợ
+            lower.contains("nhắc nợ") || lower.contains("đòi nợ") || lower.contains("nhắc tiền") || lower.contains("nợ") -> {
+                val targetName = when {
+                    lower.contains("linh") -> "Linh"
+                    lower.contains("hùng") -> "Hùng"
+                    lower.contains("đạt") -> "Đạt"
+                    lower.contains("bình") -> "Bình"
+                    lower.contains("nam") -> "Nam"
+                    else -> "bạn"
+                }
+
+                val reminderText = "Ting ting! 🧋 $targetName ơi, hôm trước nhóm mình đi ăn chung vui quá. Phần chi phí của bạn là 120.000 đ nè. Khi nào tiện bạn chuyển khoản vào quỹ nhóm để thủ quỹ chốt sổ tháng nhé! Cảm ơn bạn nhiều ❤️"
+
+                ChatMessage(
+                    text = "FinSprout đã soạn sẵn một mẫu nhắc nợ vừa dễ thương vừa tế nhị cho bạn này! Bạn có thể bấm sao chép để gửi ngay qua Zalo/Messenger nhé: 💌",
+                    isFromUser = false,
+                    reminderProposal = ChatReminderProposal(
+                        recipientName = targetName,
+                        amountFormatted = "120.000 đ",
+                        suggestedMessage = reminderText,
+                        isCopied = false
+                    )
+                )
+            }
+
+            // Mẹo tiết kiệm
+            lower.contains("mẹo") || lower.contains("tiết kiệm") || lower.contains("lời khuyên") -> {
+                ChatMessage(
+                    text = "💡 3 Mẹo vàng tiết kiệm chi tiêu nhóm từ FinSprout:\n\n" +
+                            "1. Quy tắc 48h: Chờ 2 ngày trước khi quyết định mua sắm đồ dùng chung đắt tiền.\n" +
+                            "2. Chốt sổ định kỳ hàng tuần: Dùng tính năng Quyết toán nợ để giảm thiểu số lần chuyển tiền lòng vòng.\n" +
+                            "3. Đặt hạn mức cảnh báo: Theo dõi ngưỡng 80% ngân sách tại màn hình Báo cáo để tránh bị động cuối tháng!",
+                    isFromUser = false
+                )
+            }
+
+            // Mặc định
+            else -> {
+                ChatMessage(
+                    text = "FinSprout luôn sẵn sàng hỗ trợ! 🌱 Bạn có thể thử các gợi ý bên dưới như:\n" +
+                            "• Nhắn 'Trưa nay ăn bún bò 180k Hùng trả' để ghi sổ tự động\n" +
+                            "• Hỏi 'Tình hình quỹ tháng này' để xem số dư tức thì\n" +
+                            "• Nhờ 'Viết tin nhắn nhắc nợ bạn Linh' để đòi tiền khéo léo!",
+                    isFromUser = false
+                )
+            }
         }
     }
 

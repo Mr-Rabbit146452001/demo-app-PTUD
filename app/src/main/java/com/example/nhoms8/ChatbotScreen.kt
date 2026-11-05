@@ -209,7 +209,7 @@ fun ChatbotScreen(
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        text = "Trợ lý Quỹ",
+                                        text = "Gemini 1.5 Flash ✨",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = emeraldGreen
@@ -217,7 +217,7 @@ fun ChatbotScreen(
                                 }
                             }
                             Text(
-                                text = "Sẵn sàng hỗ trợ chi tiêu & nợ ròng",
+                                text = "Trực tuyến · Sẵn sàng ghi chi tiêu & phân tích quỹ",
                                 fontSize = 12.sp,
                                 color = textMuted
                             )

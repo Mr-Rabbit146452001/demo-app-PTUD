@@ -174,7 +174,15 @@ Nhoms8/
    - Chọn **File > Open...** và duyệt đến thư mục dự án vừa clone.
    - Chờ Android Studio đồng bộ Gradle (**Sync Project with Gradle Files**).
 
-3. **Build & Run:**
+3. **Cấu hình Google Gemini API Key (Trợ lý FinSprout Cloud):**
+   - Lấy API Key miễn phí tại [Google AI Studio](https://aistudio.google.com/).
+   - Mở file `local.properties` tại thư mục gốc và dán mã khóa:
+     ```properties
+     GEMINI_API_KEY=AIzaSyYourActualApiKeyHere...
+     ```
+   - *(Lưu ý: Nếu chưa nhập Key, ứng dụng sẽ tự động kích hoạt bộ xử lý thông minh nội bộ để phục vụ trải nghiệm mượt mà không bị gián đoạn).*
+
+4. **Build & Run:**
    - Đảm bảo trên thanh công cụ chọn Run Configuration là **`app`** (biểu tượng robot Android).
    - Chọn thiết bị máy ảo hoặc điện thoại thật đã kết nối.
    - Nhấn nút **Run ▶️** (hoặc tổ hợp phím `Shift + F10`) để build và cài đặt ứng dụng.

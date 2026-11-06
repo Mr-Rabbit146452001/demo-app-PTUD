@@ -56,19 +56,19 @@ import com.example.nhoms8.ui.theme.Nhoms8Theme
  * Thiết kế chuẩn ứng dụng SpendTogether theo Figma:
  * - Nền be kem ấm áp, mảng cong xanh xô thơm
  * - Header: "Cá nhân", dòng phụ "Tài khoản & cài đặt", nút tròn mã QR
- * - Thẻ hồ sơ người dùng xanh rêu sẫm: Avatar "MA", tên "Nguyễn Minh Anh", vai trò, nút chỉnh sửa
- * - Thẻ Nhóm đang hoạt động: Icon nhà tim, "Nhà Mình", "5 thành viên · 12.680.000 đ", nút "Đổi nhóm"
+ * - Thẻ hồ sơ người dùng xanh rêu sẫm: Avatar "VH", tên "Lê Văn Hùng", vai trò, nút chỉnh sửa
+ * - Thẻ Nhóm đang hoạt động: Icon nhà tim, "Quỹ Chi Tiêu Nhóm 08", "4 thành viên · Quỹ hoạt động", nút "Đổi nhóm"
  * - Thẻ Tùy chỉnh: Thông báo giao dịch (Toggle), Giao diện, Đơn vị tiền tệ
  * - Thẻ Bảo mật & Hỗ trợ: Bảo mật tài khoản, Trung tâm trợ giúp, Đăng xuất (màu đỏ)
  * - Thanh điều hướng đáy (Bottom Navigation Bar) cố định với tab Cá nhân đang active
  */
 @Composable
 fun ProfileScreen(
-    userName: String = "Nguyễn Minh Anh",
-    userInitials: String = "MA",
+    userName: String = "Lê Văn Hùng",
+    userInitials: String = "VH",
     userSubtitle: String = "0912 345 678 · Trưởng nhóm",
-    groupName: String = "Nhà Mình",
-    groupSubtitle: String = "5 thành viên · 12.680.000 đ",
+    groupName: String = "Quỹ Chi Tiêu Nhóm 08",
+    groupSubtitle: String = "4 thành viên · Quỹ hoạt động",
     onQrCodeClicked: () -> Unit = {},
     onEditProfileClicked: () -> Unit = {},
     onChangeGroupClicked: () -> Unit = {},

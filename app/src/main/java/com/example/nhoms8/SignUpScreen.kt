@@ -70,10 +70,10 @@ fun SignUpScreen(
     onPickAvatarClicked: () -> Unit = {}
 ) {
     // Trạng thái Form nhập liệu
-    var fullName by remember { mutableStateOf("Nguyễn Minh Anh") }
-    var phoneNumber by remember { mutableStateOf("0912 345 678") }
-    var password by remember { mutableStateOf("12345678") }
-    var confirmPassword by remember { mutableStateOf("12345678") }
+    var fullName by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var agreeToTerms by remember { mutableStateOf(true) }
 
     // Bảng màu thiết kế ấm áp & chuẩn phong cách

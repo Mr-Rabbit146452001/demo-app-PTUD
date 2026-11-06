@@ -68,8 +68,8 @@ fun LoginScreen(
     onAppleLoginClicked: () -> Unit = {}
 ) {
     // Trạng thái Form đăng nhập
-    var phoneInput by remember { mutableStateOf("0912 345 678") }
-    var passwordInput by remember { mutableStateOf("12345678") }
+    var phoneInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(true) }
 

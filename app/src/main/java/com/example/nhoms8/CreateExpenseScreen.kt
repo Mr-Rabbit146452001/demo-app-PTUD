@@ -1,5 +1,7 @@
 package com.example.nhoms8
 
+import com.example.nhoms8.algorithm.FintechAlgorithm
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +51,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -72,17 +76,23 @@ enum class ExpenseCategory(val label: String) {
 @Composable
 fun CreateExpenseScreen(
     groupTitle: String = "Tạo khoản chi",
-    groupSubtitle: String = "Ghi vào quỹ Nhà Mình",
-    initialAmount: String = "850.000",
-    initialAmountInWords: String = "Tám trăm năm mươi nghìn đồng",
+    groupSubtitle: String = "Ghi vào Quỹ Chi Tiêu Nhóm 08",
+    initialAmount: String = "",
+    payerName: String = "Lê Văn Hùng",
+    payerInitials: String = "VH",
+    payerAvatarBg: Color = Color(0xFFC4E2D3),
+    memberCount: Int = 4,
     onBackClicked: () -> Unit = {},
     onScanReceiptClicked: () -> Unit = {},
     onSaveAndSplitClicked: (amount: String, category: String, note: String) -> Unit = { _, _, _ -> }
 ) {
-    var amount by remember { mutableStateOf(initialAmount) }
+    var rawDigits by remember { mutableStateOf(initialAmount.replace(".", "").replace(",", "")) }
+    val amountLong = rawDigits.toLongOrNull() ?: 0L
+    val formattedAmount = if (rawDigits.isEmpty()) "0" else FintechAlgorithm.formatVnd(amountLong, withSymbol = false)
+    val amountInWords = FintechAlgorithm.convertNumberToWords(amountLong)
     var selectedCategory by remember { mutableStateOf(ExpenseCategory.FOOD) }
-    var note by remember { mutableStateOf("Thực phẩm và đồ dùng cuối tuần") }
-    val expenseDate by remember { mutableStateOf("03 tháng 10, 2026") }
+    var note by remember { mutableStateOf("") }
+    val expenseDate = remember { FintechAlgorithm.getTodayFormatted() }
 
     // Bảng màu thiết kế chuẩn Figma
     val backgroundColor = Color(0xFFF5F3EC)      // Màu kem nhạt ấm áp
@@ -237,23 +247,70 @@ fun CreateExpenseScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Số tiền nổi bật
-                        Text(
-                            text = "$amount đ",
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            letterSpacing = (-0.5).sp
-                        )
+                        // Ô nhập số tiền động với bàn phím số
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            BasicTextField(
+                                value = rawDigits,
+                                onValueChange = { input ->
+                                    val digitsOnly = input.filter { it.isDigit() }.take(12)
+                                    rawDigits = digitsOnly
+                                },
+                                textStyle = TextStyle(
+                                    fontSize = 34.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    letterSpacing = (-0.5).sp,
+                                    textAlign = TextAlign.Center
+                                ),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                cursorBrush = SolidColor(Color.White),
+                                decorationBox = { innerTextField ->
+                                    if (rawDigits.isEmpty()) {
+                                        Text(
+                                            text = "0",
+                                            fontSize = 34.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White.copy(alpha = 0.5f),
+                                            letterSpacing = (-0.5).sp
+                                        )
+                                    } else {
+                                        Text(
+                                            text = formattedAmount,
+                                            fontSize = 34.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            letterSpacing = (-0.5).sp
+                                        )
+                                    }
+                                    // Ẩn TextField gốc nhưng vẫn nhận focus nhập bàn phím
+                                    Box(modifier = Modifier.size(0.dp)) {
+                                        innerTextField()
+                                    }
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            Text(
+                                text = "đ",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFA5BCB0)
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // Đọc số bằng chữ
+                        // Đọc số bằng chữ tự động cập nhật
                         Text(
-                            text = initialAmountInWords,
+                            text = amountInWords,
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Normal,
-                            color = Color(0xFFA5BCB0)
+                            color = Color(0xFFA5BCB0),
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -397,16 +454,16 @@ fun CreateExpenseScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // Avatar tròn LA
+                                    // Avatar tròn người trả
                                     Box(
                                         modifier = Modifier
                                             .size(38.dp)
                                             .clip(CircleShape)
-                                            .background(Color(0xFFDEE7A8)),
+                                            .background(payerAvatarBg),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "LA",
+                                            text = payerInitials,
                                             fontSize = 13.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = forestGreenDark
@@ -417,7 +474,7 @@ fun CreateExpenseScreen(
 
                                     Column {
                                         Text(
-                                            text = "Lan Anh",
+                                            text = payerName,
                                             fontSize = 14.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = forestGreenDark
@@ -503,7 +560,7 @@ fun CreateExpenseScreen(
                     Spacer(modifier = Modifier.width(6.dp))
 
                     Text(
-                        text = "Chia khoản này cho 5 thành viên sau khi lưu",
+                        text = "Chia khoản này cho $memberCount thành viên sau khi lưu",
                         fontSize = 12.5.sp,
                         color = Color(0xFF7E8E84),
                         textAlign = TextAlign.Center
@@ -524,7 +581,7 @@ fun CreateExpenseScreen(
                         )
                         .clip(CircleShape)
                         .background(forestGreenDark)
-                        .clickable { onSaveAndSplitClicked(amount, selectedCategory.label, note) },
+                        .clickable { onSaveAndSplitClicked(formattedAmount, selectedCategory.label, note) },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(

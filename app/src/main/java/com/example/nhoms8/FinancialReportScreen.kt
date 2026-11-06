@@ -54,10 +54,14 @@ import com.example.nhoms8.ui.theme.Nhoms8Theme
 @Composable
 fun FinancialReportScreen(
     groupTitle: String = "Báo cáo",
-    groupSubtitle: String = "Phân tích quỹ Nhà Mình",
-    totalIncomeText: String = "8,50 tr",
-    totalExpenseText: String = "5,82 tr",
-    totalBalanceText: String = "12,68 tr",
+    groupSubtitle: String = "Phân tích Quỹ Chi Tiêu Nhóm 08",
+    totalIncomeText: String = "10,00 tr",
+    totalExpenseText: String = "1,51 tr",
+    totalBalanceText: String = "8,49 tr",
+    totalSpentFormatted: String = "1.510.000 đ",
+    categoryBreakdown: List<com.example.nhoms8.model.CategoryReportItem> = emptyList(),
+    memberBreakdown: List<com.example.nhoms8.model.MemberReportItem> = emptyList(),
+    highestSpenderNote: String = "Lê Văn Hùng chi nhiều nhất",
     onExportReportClicked: () -> Unit = {},
     onFilterMonthClicked: () -> Unit = {},
     onCompareMonthClicked: () -> Unit = {},
@@ -298,7 +302,7 @@ fun FinancialReportScreen(
                             )
 
                             Text(
-                                text = "5.820.000 đ",
+                                text = totalSpentFormatted,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = textMuted
@@ -318,11 +322,14 @@ fun FinancialReportScreen(
                                 modifier = Modifier.size(130.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                DonutChartCanvas(modifier = Modifier.fillMaxSize())
+                                DonutChartCanvas(
+                                    modifier = Modifier.fillMaxSize(),
+                                    categories = categoryBreakdown
+                                )
 
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = "5,82tr",
+                                        text = totalExpenseText,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = forestGreenDark
@@ -337,15 +344,25 @@ fun FinancialReportScreen(
 
                             Spacer(modifier = Modifier.width(16.dp))
 
-                            // Chú giải 4 dòng bên phải
+                            // Chú giải danh mục bên phải (tính toán động)
                             Column(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                DonutLegendItem(color = Color(0xFF14382C), label = "Nhà ở", value = "2,91 tr")
-                                DonutLegendItem(color = Color(0xFF6E9882), label = "Ăn uống", value = "1,75 tr")
-                                DonutLegendItem(color = Color(0xFFDCE8AC), label = "Đi lại", value = "700k")
-                                DonutLegendItem(color = Color(0xFFD6B98C), label = "Khác", value = "460k")
+                                if (categoryBreakdown.isNotEmpty()) {
+                                    categoryBreakdown.forEach { item ->
+                                        DonutLegendItem(
+                                            color = item.color,
+                                            label = item.categoryName,
+                                            value = item.amountFormatted
+                                        )
+                                    }
+                                } else {
+                                    DonutLegendItem(color = Color(0xFF6E9882), label = "Ăn uống", value = "0 đ")
+                                    DonutLegendItem(color = Color(0xFF14382C), label = "Nhà ở", value = "0 đ")
+                                    DonutLegendItem(color = Color(0xFFDCE8AC), label = "Đi lại", value = "0 đ")
+                                    DonutLegendItem(color = Color(0xFFD6B98C), label = "Khác", value = "0 đ")
+                                }
                             }
                         }
                     }
@@ -382,7 +399,7 @@ fun FinancialReportScreen(
                             )
 
                             Text(
-                                text = "Minh Anh cao nhất",
+                                text = highestSpenderNote,
                                 fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = Color(0xFF507865)
@@ -391,7 +408,7 @@ fun FinancialReportScreen(
 
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Biểu đồ cột dọc (5 cột)
+                        // Biểu đồ cột dọc thành viên thực tế của Nhóm 08 (Hùng, Linh, Đạt, Bình)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -399,11 +416,22 @@ fun FinancialReportScreen(
                             horizontalArrangement = Arrangement.SpaceAround,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            BarChartColumnItem(name = "M.Anh", amountLabel = "1,8tr", heightRatio = 1.0f, barColor = forestGreenDark)
-                            BarChartColumnItem(name = "Lan", amountLabel = "1,4tr", heightRatio = 0.78f, barColor = Color(0xFFBDE2CC))
-                            BarChartColumnItem(name = "Nam", amountLabel = "1,1tr", heightRatio = 0.61f, barColor = Color(0xFFBDE2CC))
-                            BarChartColumnItem(name = "My", amountLabel = "820k", heightRatio = 0.46f, barColor = Color(0xFFBDE2CC))
-                            BarChartColumnItem(name = "Phúc", amountLabel = "700k", heightRatio = 0.39f, barColor = Color(0xFFBDE2CC))
+                            if (memberBreakdown.isNotEmpty()) {
+                                memberBreakdown.forEachIndexed { index, item ->
+                                    val barColor = if (index == 0) forestGreenDark else Color(0xFFBDE2CC)
+                                    BarChartColumnItem(
+                                        name = item.shortName,
+                                        amountLabel = item.amountFormatted,
+                                        heightRatio = item.heightRatio,
+                                        barColor = barColor
+                                    )
+                                }
+                            } else {
+                                BarChartColumnItem(name = "Hùng", amountLabel = "850k", heightRatio = 1.0f, barColor = forestGreenDark)
+                                BarChartColumnItem(name = "Linh", amountLabel = "330k", heightRatio = 0.39f, barColor = Color(0xFFBDE2CC))
+                                BarChartColumnItem(name = "Đạt", amountLabel = "145k", heightRatio = 0.17f, barColor = Color(0xFFBDE2CC))
+                                BarChartColumnItem(name = "Bình", amountLabel = "185k", heightRatio = 0.22f, barColor = Color(0xFFBDE2CC))
+                            }
                         }
                     }
                 }
@@ -540,62 +568,75 @@ private fun KpiSummaryCard(
 }
 
 /**
- * Biểu đồ tròn Donut vẽ bằng Canvas
+ * Biểu đồ tròn Donut vẽ bằng Canvas tính toán góc quét động
  */
 @Composable
-private fun DonutChartCanvas(modifier: Modifier = Modifier) {
+private fun DonutChartCanvas(
+    modifier: Modifier = Modifier,
+    categories: List<com.example.nhoms8.model.CategoryReportItem> = emptyList()
+) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val strokeWidth = 24.dp.toPx()
         val arcSize = Size(w - strokeWidth, h - strokeWidth)
         val arcOffset = Offset(strokeWidth / 2, strokeWidth / 2)
-
         val stroke = Stroke(width = strokeWidth)
 
-        // 1. Phân đoạn Nhà ở (50% ~ 180 độ) - Xanh rêu đậm
-        drawArc(
-            color = Color(0xFF14382C),
-            startAngle = 0f,
-            sweepAngle = 180f,
-            useCenter = false,
-            topLeft = arcOffset,
-            size = arcSize,
-            style = stroke
-        )
-
-        // 2. Phân đoạn Ăn uống (30% ~ 108 độ) - Xanh xô thơm
-        drawArc(
-            color = Color(0xFF6E9882),
-            startAngle = 180f,
-            sweepAngle = 108f,
-            useCenter = false,
-            topLeft = arcOffset,
-            size = arcSize,
-            style = stroke
-        )
-
-        // 3. Phân đoạn Đi lại (12% ~ 43 độ) - Xanh cốm nhạt
-        drawArc(
-            color = Color(0xFFDCE8AC),
-            startAngle = 288f,
-            sweepAngle = 43f,
-            useCenter = false,
-            topLeft = arcOffset,
-            size = arcSize,
-            style = stroke
-        )
-
-        // 4. Phân đoạn Khác (8% ~ 29 độ) - Vàng cát nâu be
-        drawArc(
-            color = Color(0xFFD6B98C),
-            startAngle = 331f,
-            sweepAngle = 29f,
-            useCenter = false,
-            topLeft = arcOffset,
-            size = arcSize,
-            style = stroke
-        )
+        val activeCategories = categories.filter { it.sweepAngle > 0f }
+        if (activeCategories.isEmpty()) {
+            // Mặc định hoặc khi chưa có chi tiêu: vòng tròn phân đoạn đều các danh mục
+            drawArc(
+                color = Color(0xFF14382C),
+                startAngle = 0f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = arcOffset,
+                size = arcSize,
+                style = stroke
+            )
+            drawArc(
+                color = Color(0xFF6E9882),
+                startAngle = 180f,
+                sweepAngle = 108f,
+                useCenter = false,
+                topLeft = arcOffset,
+                size = arcSize,
+                style = stroke
+            )
+            drawArc(
+                color = Color(0xFFDCE8AC),
+                startAngle = 288f,
+                sweepAngle = 43f,
+                useCenter = false,
+                topLeft = arcOffset,
+                size = arcSize,
+                style = stroke
+            )
+            drawArc(
+                color = Color(0xFFD6B98C),
+                startAngle = 331f,
+                sweepAngle = 29f,
+                useCenter = false,
+                topLeft = arcOffset,
+                size = arcSize,
+                style = stroke
+            )
+        } else {
+            var currentAngle = -90f
+            activeCategories.forEach { item ->
+                drawArc(
+                    color = item.color,
+                    startAngle = currentAngle,
+                    sweepAngle = item.sweepAngle,
+                    useCenter = false,
+                    topLeft = arcOffset,
+                    size = arcSize,
+                    style = stroke
+                )
+                currentAngle += item.sweepAngle
+            }
+        }
     }
 }
 

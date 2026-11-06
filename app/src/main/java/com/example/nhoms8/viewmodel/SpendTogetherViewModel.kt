@@ -48,7 +48,7 @@ class SpendTogetherViewModel(
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(
         listOf(
             ChatMessage(
-                text = "Chào bạn! Mình là FinSprout 🌱 - Trợ lý AI của SpendTogether. Mình có thể giúp bạn ghi nhanh chi tiêu bằng lời nói, kiểm tra quỹ nhóm hoặc gợi ý tin nhắn đòi nợ khéo léo. Bạn cần hỗ trợ gì hôm nay?",
+                text = "Chào bạn! Mình là FinSprout 🌱 - Trợ lý AI của SpendTogether dành riêng cho Quỹ Chi Tiêu Nhóm 08. Mình có thể giúp bạn ghi nhanh chi tiêu bằng lời nói, kiểm tra quỹ nhóm hoặc gợi ý tin nhắn đòi nợ khéo léo. Bạn cần hỗ trợ gì hôm nay?",
                 isFromUser = false,
                 timestampFormatted = "Vừa xong"
             )
@@ -60,7 +60,7 @@ class SpendTogetherViewModel(
         // Tự động đồng bộ tài khoản Firebase nếu đã đăng nhập từ trước
         firebaseAuthRepository.getCurrentUser()?.let { user ->
             val email = user.email ?: ""
-            val name = user.displayName ?: "Nguyễn Minh Anh"
+            val name = user.displayName ?: "Lê Văn Hùng"
             repository.login(email, name)
         }
     }
@@ -141,6 +141,61 @@ class SpendTogetherViewModel(
         val unpaidDebts = debts.filterNot { it.isPaid }
         val totalUnpaidAmount = unpaidDebts.sumOf { it.rawAmount }
 
+        // 5. Tính toán phân bổ chi tiêu theo danh mục (Donut Chart Analytics)
+        val expenseTx = transactions.filter { !it.isIncome }
+        val totalSpent = expenseTx.sumOf { it.amount }
+
+        val categoryReportItems = ExpenseCategory.entries.map { category ->
+            val catAmount = expenseTx.filter { it.category == category }.sumOf { it.amount }
+            val percentage = if (totalSpent > 0L) (catAmount.toFloat() / totalSpent) * 100f else 0f
+            val sweepAngle = percentage * 3.6f
+            val color = when (category) {
+                ExpenseCategory.HOUSING -> androidx.compose.ui.graphics.Color(0xFF14382C)
+                ExpenseCategory.FOOD -> androidx.compose.ui.graphics.Color(0xFF6E9882)
+                ExpenseCategory.TRANSPORT -> androidx.compose.ui.graphics.Color(0xFFDCE8AC)
+                ExpenseCategory.OTHER -> androidx.compose.ui.graphics.Color(0xFFD6B98C)
+            }
+            com.example.nhoms8.model.CategoryReportItem(
+                category = category,
+                categoryName = category.label,
+                amount = catAmount,
+                amountFormatted = FintechAlgorithm.formatShortVnd(catAmount),
+                percentage = percentage,
+                sweepAngle = sweepAngle,
+                color = color
+            )
+        }
+
+        // 6. Tính toán phân bổ chi tiêu theo thành viên (Member Bar Chart)
+        val memberSpendingMap = members.associate { member ->
+            val spent = expenseTx.filter { it.payerId == member.id }.sumOf { it.amount }
+            member.id to spent
+        }
+        val maxMemberSpent = memberSpendingMap.values.maxOrNull()?.takeIf { it > 0L } ?: 1L
+
+        val memberReportItems = members.map { member ->
+            val spent = memberSpendingMap[member.id] ?: 0L
+            val ratio = if (maxMemberSpent > 0L) spent.toFloat() / maxMemberSpent else 0f
+            val heightRatio = if (spent == 0L) 0.08f else ratio.coerceIn(0.18f, 1.0f)
+            val shortName = member.name.trim().split(" ").lastOrNull() ?: member.name
+            com.example.nhoms8.model.MemberReportItem(
+                memberId = member.id,
+                memberName = member.name,
+                shortName = shortName,
+                amount = spent,
+                amountFormatted = FintechAlgorithm.formatShortVnd(spent),
+                heightRatio = heightRatio
+            )
+        }
+
+        val topSpender = members.maxByOrNull { memberSpendingMap[it.id] ?: 0L }
+        val topSpenderAmount = topSpender?.let { memberSpendingMap[it.id] } ?: 0L
+        val highestSpenderNote = if (topSpender != null && topSpenderAmount > 0L) {
+            "${topSpender.name} chi nhiều nhất"
+        } else {
+            "Chưa có khoản chi"
+        }
+
         SpendTogetherUiState(
             userProfile = userProfile,
             members = members,
@@ -153,9 +208,13 @@ class SpendTogetherViewModel(
             filter = filter,
             autoReminderEnabled = autoReminder,
             splitMembers = splitMembers,
-            totalContributedAmount = "21.500.000 đ",
+            totalContributedAmount = FintechAlgorithm.formatVnd(budget.depositedAmount),
             unpaidDebtsCount = unpaidDebts.size,
             totalUnpaidDebtFormatted = FintechAlgorithm.formatVnd(totalUnpaidAmount),
+            categoryReportItems = categoryReportItems,
+            memberReportItems = memberReportItems,
+            highestSpenderNote = highestSpenderNote,
+            totalSpentFormatted = FintechAlgorithm.formatVnd(totalSpent),
             authLoading = authLoading,
             authErrorMessage = authErrorMessage,
             authSuccessMessage = authSuccessMessage,
@@ -184,7 +243,7 @@ class SpendTogetherViewModel(
                     _authLoading.value = false
                     _firebaseUserEmail.value = result.user.email
                     _authSuccessMessage.value = result.message
-                    val displayName = result.user.displayName ?: "Nguyễn Minh Anh"
+                    val displayName = result.user.displayName ?: "Lê Văn Hùng"
                     repository.login(emailOrPhone, displayName)
                     onSuccess()
                 }
@@ -242,7 +301,7 @@ class SpendTogetherViewModel(
 
     // ==================== HÀNH ĐỘNG TƯƠNG TÁC (USER INTENTS) ====================
 
-    fun onLogin(phoneNumber: String, name: String = "Nguyễn Minh Anh") {
+    fun onLogin(phoneNumber: String, name: String = "Lê Văn Hùng") {
         repository.login(phoneNumber, name)
     }
 
@@ -421,8 +480,6 @@ class SpendTogetherViewModel(
                     lower.contains("linh") -> "Lý Việt Linh"
                     lower.contains("đạt") -> "Nguyễn Phan Tấn Đạt"
                     lower.contains("bình") -> "Lê Trung Bình"
-                    lower.contains("nam") -> "Tuấn Nam"
-                    lower.contains("my") -> "Hà My"
                     else -> uiState.value.userProfile.name
                 }
 
@@ -476,18 +533,20 @@ class SpendTogetherViewModel(
                     lower.contains("hùng") -> "Hùng"
                     lower.contains("đạt") -> "Đạt"
                     lower.contains("bình") -> "Bình"
-                    lower.contains("nam") -> "Nam"
                     else -> "bạn"
                 }
 
-                val reminderText = "Ting ting! 🧋 $targetName ơi, hôm trước nhóm mình đi ăn chung vui quá. Phần chi phí của bạn là 120.000 đ nè. Khi nào tiện bạn chuyển khoản vào quỹ nhóm để thủ quỹ chốt sổ tháng nhé! Cảm ơn bạn nhiều ❤️"
+                val matchedDebt = repository.debts.value.find { !it.isPaid && it.debtorName.contains(targetName, ignoreCase = true) }
+                val debtAmountStr = matchedDebt?.amountFormatted ?: "khoản chi gần nhất"
+
+                val reminderText = "Ting ting! 🧋 $targetName ơi, hôm trước nhóm mình chi chung hoạt động đồ án. Phần chi phí của bạn là $debtAmountStr nè. Khi nào tiện bạn chuyển khoản vào quỹ nhóm để thủ quỹ chốt sổ nhé! Cảm ơn bạn nhiều ❤️"
 
                 ChatMessage(
                     text = "FinSprout đã soạn sẵn một mẫu nhắc nợ vừa dễ thương vừa tế nhị cho bạn này! Bạn có thể bấm sao chép để gửi ngay qua Zalo/Messenger nhé: 💌",
                     isFromUser = false,
                     reminderProposal = ChatReminderProposal(
                         recipientName = targetName,
-                        amountFormatted = "120.000 đ",
+                        amountFormatted = matchedDebt?.amountFormatted ?: "200.000 đ",
                         suggestedMessage = reminderText,
                         isCopied = false
                     )

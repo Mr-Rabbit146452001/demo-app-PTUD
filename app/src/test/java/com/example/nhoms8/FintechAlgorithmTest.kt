@@ -59,14 +59,29 @@ class FintechAlgorithmTest {
     }
 
     @Test
-    fun testSimplifyDebts_minCashFlow() {
-        val m1 = GroupMember("1", "Minh Anh", "MA", "0912345678", true, Color.Green, MemberBalanceStatus.Balanced)
-        val m2 = GroupMember("2", "Lan Anh", "LA", "0908224510", false, Color.Yellow, MemberBalanceStatus.Balanced)
-        val m3 = GroupMember("3", "Tuấn Nam", "TN", "0986420115", false, Color.Cyan, MemberBalanceStatus.Balanced)
+    fun testConvertNumberToWords() {
+        assertEquals("Không đồng", FintechAlgorithm.convertNumberToWords(0L))
+        assertEquals("Tám trăm năm mươi nghìn đồng", FintechAlgorithm.convertNumberToWords(850000L))
+        assertEquals("Mười triệu đồng", FintechAlgorithm.convertNumberToWords(10000000L))
+        assertEquals("Một trăm tám mươi lăm nghìn đồng", FintechAlgorithm.convertNumberToWords(185000L))
+    }
 
-        // Minh Anh cho vay ròng: +400.000 đ
-        // Lan Anh cho vay ròng: +200.000 đ
-        // Tuấn Nam nợ ròng: -600.000 đ
+    @Test
+    fun testFormatShortVnd() {
+        assertEquals("1,8 tr", FintechAlgorithm.formatShortVnd(1800000L))
+        assertEquals("850k", FintechAlgorithm.formatShortVnd(850000L))
+        assertEquals("0 đ", FintechAlgorithm.formatShortVnd(0L))
+    }
+
+    @Test
+    fun testSimplifyDebts_minCashFlow() {
+        val m1 = GroupMember("1", "Lê Văn Hùng", "VH", "0912345678", true, Color.Green, MemberBalanceStatus.Balanced)
+        val m2 = GroupMember("2", "Lý Việt Linh", "VL", "0908224510", false, Color.Yellow, MemberBalanceStatus.Balanced)
+        val m3 = GroupMember("3", "Nguyễn Phan Tấn Đạt", "TĐ", "0986420115", false, Color.Cyan, MemberBalanceStatus.Balanced)
+
+        // Hùng cho vay ròng: +400.000 đ
+        // Linh cho vay ròng: +200.000 đ
+        // Đạt nợ ròng: -600.000 đ
         val netBalances = mapOf(
             "1" to 400000L,
             "2" to 200000L,
@@ -75,7 +90,7 @@ class FintechAlgorithmTest {
 
         val simplifiedDebts = FintechAlgorithm.simplifyDebts(listOf(m1, m2, m3), netBalances)
 
-        // Thuật toán Min Cash Flow ghép cặp tối ưu: Tuấn Nam trả Minh Anh 400k, Tuấn Nam trả Lan Anh 200k (chỉ 2 giao dịch)
+        // Thuật toán Min Cash Flow ghép cặp tối ưu: Đạt trả Hùng 400k, Đạt trả Linh 200k (chỉ 2 giao dịch)
         assertEquals(2, simplifiedDebts.size)
         val totalSettled = simplifiedDebts.sumOf { it.rawAmount }
         assertEquals(600000L, totalSettled)

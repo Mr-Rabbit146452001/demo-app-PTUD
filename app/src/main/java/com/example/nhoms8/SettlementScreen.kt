@@ -80,7 +80,7 @@ data class DebtItem(
 @Composable
 fun SettlementScreen(
     groupTitle: String = "Ai nợ ai?",
-    groupSubtitle: String = "Quyết toán quỹ Nhà Mình",
+    groupSubtitle: String = "Quyết toán Quỹ Chi Tiêu Nhóm 08",
     debtsList: List<DebtItem>? = null,
     autoReminder: Boolean = true,
     onToggleAutoReminder: (Boolean) -> Unit = {},
@@ -103,46 +103,46 @@ fun SettlementScreen(
     // Trạng thái bật/tắt nhắc nợ tự động
     var autoReminderEnabled by remember(autoReminder) { mutableStateOf(autoReminder) }
 
-    // Danh sách 3 khoản nợ mẫu theo đặc tả thiết kế
+    // Danh sách khoản nợ thực tế giữa các thành viên Nhóm 08
     val defaultDebtItems = remember {
         mutableStateListOf(
             DebtItem(
                 id = "debt_1",
-                debtorName = "Tuấn Nam",
-                debtorInitials = "TN",
+                debtorName = "Nguyễn Phan Tấn Đạt",
+                debtorInitials = "TĐ",
                 debtorAvatarBg = Color(0xFFCBE3DC),
-                creditorName = "Lan Anh",
-                creditorInitials = "LA",
-                creditorAvatarBg = Color(0xFFDEE7A8),
-                rawAmount = 425000L,
-                amountFormatted = "425.000 đ",
-                statusText = "Hạn trả: 06/10",
+                creditorName = "Lê Văn Hùng",
+                creditorInitials = "VH",
+                creditorAvatarBg = Color(0xFFC4E2D3),
+                rawAmount = 232500L,
+                amountFormatted = "232.500 đ",
+                statusText = "Chờ chuyển khoản",
                 isPaid = false
             ),
             DebtItem(
                 id = "debt_2",
-                debtorName = "Quang Phúc",
-                debtorInitials = "QP",
-                debtorAvatarBg = Color(0xFFD2DEC8),
-                creditorName = "Minh Anh",
-                creditorInitials = "MA",
+                debtorName = "Lê Trung Bình",
+                debtorInitials = "TB",
+                debtorAvatarBg = Color(0xFFF2D7C8),
+                creditorName = "Lê Văn Hùng",
+                creditorInitials = "VH",
                 creditorAvatarBg = Color(0xFFC4E2D3),
-                rawAmount = 180000L,
-                amountFormatted = "180.000 đ",
-                statusText = "Hạn trả: 06/10",
+                rawAmount = 192500L,
+                amountFormatted = "192.500 đ",
+                statusText = "Chờ chuyển khoản",
                 isPaid = false
             ),
             DebtItem(
                 id = "debt_3",
-                debtorName = "Hà My",
-                debtorInitials = "HM",
-                debtorAvatarBg = Color(0xFFF2D7C8),
-                creditorName = "Tuấn Nam",
-                creditorInitials = "TN",
-                creditorAvatarBg = Color(0xFFCBE3DC),
-                rawAmount = 250000L,
-                amountFormatted = "250.000 đ",
-                statusText = "Đã thanh toán hôm qua",
+                debtorName = "Lý Việt Linh",
+                debtorInitials = "VL",
+                debtorAvatarBg = Color(0xFFDEE7A8),
+                creditorName = "Lê Văn Hùng",
+                creditorInitials = "VH",
+                creditorAvatarBg = Color(0xFFC4E2D3),
+                rawAmount = 47500L,
+                amountFormatted = "47.500 đ",
+                statusText = "Đã thanh toán",
                 isPaid = true
             )
         )
@@ -338,32 +338,63 @@ fun SettlementScreen(
             Spacer(modifier = Modifier.height(18.dp))
 
             // ====================== 3. DANH SÁCH THẺ KHOẢN NỢ ======================
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                currentDebts.forEachIndexed { index, item ->
-                    DebtSettlementCard(
-                        item = item,
-                        forestGreenDark = forestGreenDark,
-                        debtCoralRed = debtCoralRed,
-                        paidGreyText = paidGreyText,
-                        checkGreen = checkGreen,
-                        arrowSage = arrowSage,
-                        disabledPillBg = disabledPillBg,
-                        disabledPillText = disabledPillText,
-                        onSettleClicked = {
-                            if (debtsList != null) {
-                                onSettleDebtClicked(item)
-                            } else {
-                                defaultDebtItems[index] = item.copy(
-                                    isPaid = true,
-                                    statusText = "Đã thanh toán vừa xong"
-                                )
-                                onSettleDebtClicked(defaultDebtItems[index])
+            if (currentDebts.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(
+                            elevation = 2.dp,
+                            shape = RoundedCornerShape(22.dp),
+                            ambientColor = Color.Black.copy(alpha = 0.04f),
+                            spotColor = Color.Black.copy(alpha = 0.06f)
+                        )
+                        .background(Color.White, RoundedCornerShape(22.dp))
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Tuyệt vời! Không có khoản nợ nào 🎉",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = forestGreenDark
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Tất cả thành viên trong nhóm đều đã sòng phẳng.",
+                            fontSize = 12.5.sp,
+                            color = textMuted
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    currentDebts.forEachIndexed { index, item ->
+                        DebtSettlementCard(
+                            item = item,
+                            forestGreenDark = forestGreenDark,
+                            debtCoralRed = debtCoralRed,
+                            paidGreyText = paidGreyText,
+                            checkGreen = checkGreen,
+                            arrowSage = arrowSage,
+                            disabledPillBg = disabledPillBg,
+                            disabledPillText = disabledPillText,
+                            onSettleClicked = {
+                                if (debtsList != null) {
+                                    onSettleDebtClicked(item)
+                                } else {
+                                    defaultDebtItems[index] = item.copy(
+                                        isPaid = true,
+                                        statusText = "Đã thanh toán vừa xong"
+                                    )
+                                    onSettleDebtClicked(defaultDebtItems[index])
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
 

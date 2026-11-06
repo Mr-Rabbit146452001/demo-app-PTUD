@@ -10,27 +10,52 @@ import com.example.nhoms8.TransactionIconType
 import com.example.nhoms8.algorithm.FintechAlgorithm
 
 /**
- * Thông tin tài khoản người dùng đang đăng nhập
+ * Thông tin tài khoản người dùng đang đăng nhập (Trưởng nhóm: Lê Văn Hùng)
  */
 data class UserProfile(
-    val id: String = "user_me",
-    val name: String = "Nguyễn Minh Anh",
-    val initials: String = "MA",
+    val id: String = "user_hung",
+    val name: String = "Lê Văn Hùng",
+    val initials: String = "VH",
     val phoneNumber: String = "0912 345 678",
-    val groupName: String = "Quỹ Nhà Mình",
+    val groupName: String = "Quỹ Chi Tiêu Nhóm 08",
     val isLeader: Boolean = true,
-    val totalBalanceFormatted: String = "12.680.000 đ"
+    val totalBalanceFormatted: String = "0 đ"
+)
+
+/**
+ * Phân bổ chi tiêu theo danh mục phục vụ vẽ biểu đồ Donut trực quan
+ */
+data class CategoryReportItem(
+    val category: ExpenseCategory,
+    val categoryName: String,
+    val amount: Long,
+    val amountFormatted: String,
+    val percentage: Float, // 0.0 -> 100.0%
+    val sweepAngle: Float, // percentage * 3.6f
+    val color: Color
+)
+
+/**
+ * Phân bổ chi tiêu theo thành viên phục vụ vẽ biểu đồ cột (Bar Chart)
+ */
+data class MemberReportItem(
+    val memberId: String,
+    val memberName: String,
+    val shortName: String,
+    val amount: Long,
+    val amountFormatted: String,
+    val heightRatio: Float // 0.0 -> 1.0f tỷ lệ chiều cao tương ứng cột cao nhất
 )
 
 /**
  * Trạng thái ngân sách và quỹ nhóm
  */
 data class BudgetState(
-    val totalBalance: Long = 12680000L,
-    val depositedAmount: Long = 8500000L,
-    val spentAmount: Long = 5820000L,
+    val totalBalance: Long = 0L,
+    val depositedAmount: Long = 0L,
+    val spentAmount: Long = 0L,
     val monthlyLimit: Long = 10000000L,
-    val monthLabel: String = "Tháng 10"
+    val monthLabel: String = "Tháng 11"
 ) {
     val totalBalanceFormatted: String get() = FintechAlgorithm.formatVnd(totalBalance)
     val depositedAmountFormatted: String get() = FintechAlgorithm.formatVnd(depositedAmount)
@@ -49,8 +74,8 @@ data class TransactionRecord(
     val isIncome: Boolean,
     val category: ExpenseCategory = ExpenseCategory.FOOD,
     val payerId: String = "1",
-    val payerName: String = "Minh Anh",
-    val dateHeader: String = "Hôm nay, 24/10",
+    val payerName: String = "Lê Văn Hùng",
+    val dateHeader: String = "Hôm nay",
     val timestamp: Long = System.currentTimeMillis()
 ) {
     fun toRecentTransaction(): RecentTransaction {
@@ -92,10 +117,10 @@ data class TransactionRecord(
  * Dữ liệu khoản chi nháp đang chuẩn bị chia tiền
  */
 data class DraftExpense(
-    val title: String = "Đi chợ cuối tuần",
-    val amount: Long = 850000L,
+    val title: String = "",
+    val amount: Long = 0L,
     val category: ExpenseCategory = ExpenseCategory.FOOD,
-    val note: String = "Thực phẩm và đồ dùng gia đình"
+    val note: String = ""
 )
 
 /**
@@ -105,7 +130,7 @@ data class TransactionFilter(
     val searchQuery: String = "",
     val selectedCategory: ExpenseCategory? = null,
     val selectedMemberId: String? = null,
-    val selectedMonth: String = "Tháng 10"
+    val selectedMonth: String = "Tháng 11"
 )
 
 /**
@@ -117,7 +142,7 @@ data class ChatExpenseProposal(
     val amountFormatted: String,
     val category: ExpenseCategory = ExpenseCategory.FOOD,
     val categoryName: String = "Ăn uống",
-    val payerName: String = "Minh Anh",
+    val payerName: String = "Lê Văn Hùng",
     val splitSummary: String = "Chia đều cho cả nhóm",
     val isConfirmed: Boolean = false
 )

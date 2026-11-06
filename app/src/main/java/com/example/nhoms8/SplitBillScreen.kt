@@ -75,7 +75,7 @@ data class SplitMemberItem(
  */
 @Composable
 fun SplitBillScreen(
-    expenseTitle: String = "Đi chợ cuối tuần",
+    expenseTitle: String = "Khoản chi cần chia",
     totalAmount: Long = 850000L,
     splitMembers: List<SplitMemberItem>? = null,
     onToggleMember: ((String) -> Unit)? = null,
@@ -85,14 +85,13 @@ fun SplitBillScreen(
 ) {
     var selectedMode by remember { mutableStateOf(SplitMode.EQUAL) }
 
-    // Danh sách thành viên tham gia chia tiền
+    // Danh sách 4 thành viên chính thức của Nhóm 08 tham gia chia tiền
     val defaultMembers = remember {
         listOf(
-            SplitMemberItem("1", "Minh Anh", "MA", Color(0xFFC4E2D3), true),
-            SplitMemberItem("2", "Lan Anh", "LA", Color(0xFFDEE7A8), true),
-            SplitMemberItem("3", "Tuấn Nam", "TN", Color(0xFFCBE3DC), true),
-            SplitMemberItem("4", "Hà My", "HM", Color(0xFFF2D7C8), true),
-            SplitMemberItem("5", "Quang Phúc", "QP", Color(0xFFD2DEC8), true)
+            SplitMemberItem("1", "Lê Văn Hùng", "VH", Color(0xFFC4E2D3), true),
+            SplitMemberItem("2", "Lý Việt Linh", "VL", Color(0xFFDEE7A8), true),
+            SplitMemberItem("3", "Nguyễn Phan Tấn Đạt", "TĐ", Color(0xFFCBE3DC), true),
+            SplitMemberItem("4", "Lê Trung Bình", "TB", Color(0xFFF2D7C8), true)
         )
     }
 

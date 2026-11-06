@@ -22,11 +22,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,13 +82,20 @@ data class GroupMember(
 @Composable
 fun MembersScreen(
     groupTitle: String = "Thành viên",
-    groupSubtitle: String = "5 người trong quỹ Nhà Mình",
-    totalContributedAmount: String = "21.500.000 đ",
+    groupSubtitle: String = "4 người trong Quỹ Chi Tiêu Nhóm 08",
+    totalContributedAmount: String = "10.000.000 đ",
     membersList: List<GroupMember>? = null,
     onBackClicked: () -> Unit = {},
     onAddMemberClicked: () -> Unit = {},
+    onAddMemberSubmit: ((name: String, phone: String, isLeader: Boolean) -> Unit)? = null,
     onMemberClicked: (GroupMember) -> Unit = {}
 ) {
+    // Trạng thái hiển thị Dialog thêm thành viên
+    var showAddDialog by remember { mutableStateOf(false) }
+    var newMemberName by remember { mutableStateOf("") }
+    var newMemberPhone by remember { mutableStateOf("") }
+    var newMemberIsLeader by remember { mutableStateOf(false) }
+
     // Bảng màu thiết kế chuẩn Figma
     val backgroundColor = Color(0xFFF5F3EC)      // Màu kem nhạt ấm áp
     val ambientSage = Color(0xFFDDEAE0)          // Màu xanh xô thơm nhạt họa tiết nền
@@ -90,53 +105,44 @@ fun MembersScreen(
     val negativeRed = Color(0xFFD34A4A)          // Màu đỏ cam biểu thị số dư âm
     val balancedGreen = Color(0xFF4A725E)        // Màu trạng thái đã cân bằng
 
-    // Danh sách 5 thành viên mẫu theo thiết kế
+    // Danh sách 4 thành viên chính thức của Nhóm 08
     val defaultMembers = remember {
         listOf(
             GroupMember(
                 id = "1",
-                name = "Minh Anh",
-                initials = "MA",
+                name = "Lê Văn Hùng",
+                initials = "VH",
                 phoneNumber = "0912 345 678",
                 isLeader = true,
                 avatarBgColor = Color(0xFFC4E2D3),
-                balanceStatus = MemberBalanceStatus.Positive("+1.180.000 đ")
+                balanceStatus = MemberBalanceStatus.Positive("+637.500 đ")
             ),
             GroupMember(
                 id = "2",
-                name = "Lan Anh",
-                initials = "LA",
+                name = "Lý Việt Linh",
+                initials = "VL",
                 phoneNumber = "0908 224 510",
                 isLeader = false,
                 avatarBgColor = Color(0xFFDEE7A8),
-                balanceStatus = MemberBalanceStatus.Positive("+425.000 đ")
+                balanceStatus = MemberBalanceStatus.Negative("-47.500 đ")
             ),
             GroupMember(
                 id = "3",
-                name = "Tuấn Nam",
-                initials = "TN",
+                name = "Nguyễn Phan Tấn Đạt",
+                initials = "TĐ",
                 phoneNumber = "0986 420 115",
                 isLeader = false,
                 avatarBgColor = Color(0xFFCBE3DC),
-                balanceStatus = MemberBalanceStatus.Negative("-425.000 đ")
+                balanceStatus = MemberBalanceStatus.Negative("-232.500 đ")
             ),
             GroupMember(
                 id = "4",
-                name = "Hà My",
-                initials = "HM",
-                phoneNumber = "0935 762 428",
+                name = "Lê Trung Bình",
+                initials = "TB",
+                phoneNumber = "0934 881 902",
                 isLeader = false,
                 avatarBgColor = Color(0xFFF2D7C8),
-                balanceStatus = MemberBalanceStatus.Balanced
-            ),
-            GroupMember(
-                id = "5",
-                name = "Quang Phúc",
-                initials = "QP",
-                phoneNumber = "0972 108 663",
-                isLeader = false,
-                avatarBgColor = Color(0xFFD2DEC8),
-                balanceStatus = MemberBalanceStatus.Negative("-180.000 đ")
+                balanceStatus = MemberBalanceStatus.Negative("-192.500 đ")
             )
         )
     }
@@ -240,7 +246,16 @@ fun MembersScreen(
                         )
                         .clip(CircleShape)
                         .background(Color.White)
-                        .clickable { onAddMemberClicked() },
+                        .clickable {
+                            if (onAddMemberSubmit != null) {
+                                newMemberName = ""
+                                newMemberPhone = ""
+                                newMemberIsLeader = false
+                                showAddDialog = true
+                            } else {
+                                onAddMemberClicked()
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     UserPlusIcon(
@@ -248,6 +263,57 @@ fun MembersScreen(
                         color = forestGreenDark
                     )
                 }
+            }
+
+            // Dialog nhập thông tin thành viên thật
+            if (showAddDialog) {
+                AlertDialog(
+                    onDismissRequest = { showAddDialog = false },
+                    title = {
+                        Text(
+                            text = "Thêm thành viên mới",
+                            fontWeight = FontWeight.Bold,
+                            color = forestGreenDark
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = newMemberName,
+                                onValueChange = { newMemberName = it },
+                                label = { Text("Họ và tên") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = newMemberPhone,
+                                onValueChange = { newMemberPhone = it },
+                                label = { Text("Số điện thoại") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (newMemberName.isNotBlank()) {
+                                    val phone = if (newMemberPhone.isNotBlank()) newMemberPhone else "0900 000 000"
+                                    onAddMemberSubmit?.invoke(newMemberName.trim(), phone.trim(), newMemberIsLeader)
+                                    showAddDialog = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = forestGreenDark)
+                        ) {
+                            Text("Thêm", color = Color.White)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showAddDialog = false }) {
+                            Text("Hủy", color = textMuted)
+                        }
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(18.dp))

@@ -34,9 +34,13 @@ class ChatbotViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private fun createTestViewModel() = SpendTogetherViewModel(
+        geminiChatRepository = com.example.nhoms8.data.GeminiChatRepository(apiKey = "")
+    )
+
     @Test
     fun testInitialChatbotGreeting() = runTest {
-        val viewModel = SpendTogetherViewModel()
+        val viewModel = createTestViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         val messages = viewModel.uiState.value.chatMessages
@@ -47,7 +51,7 @@ class ChatbotViewModelTest {
 
     @Test
     fun testSendMessage_NaturalLanguageExpenseLogging() = runTest {
-        val viewModel = SpendTogetherViewModel()
+        val viewModel = createTestViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Gửi câu thoại nhập chi tiêu
@@ -69,7 +73,7 @@ class ChatbotViewModelTest {
 
     @Test
     fun testConfirmExpense_UpdatesBudgetAndAddsTransaction() = runTest {
-        val viewModel = SpendTogetherViewModel()
+        val viewModel = createTestViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         val initialBalance = viewModel.uiState.value.budget.totalBalance
@@ -92,7 +96,7 @@ class ChatbotViewModelTest {
 
     @Test
     fun testSendMessage_DebtReminder() = runTest {
-        val viewModel = SpendTogetherViewModel()
+        val viewModel = createTestViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.sendMessageToChatbot("Viết giúp mình tin nhắn nhắc nợ bạn Linh")
@@ -106,7 +110,7 @@ class ChatbotViewModelTest {
 
     @Test
     fun testClearChatHistory() = runTest {
-        val viewModel = SpendTogetherViewModel()
+        val viewModel = createTestViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.sendMessageToChatbot("Hỏi tình hình quỹ")

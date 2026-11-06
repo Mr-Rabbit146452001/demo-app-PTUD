@@ -147,12 +147,12 @@ fun SpendTogetherApp(
                             }
                         },
                         onGoogleLoginClicked = {
-                            viewModel.onLogin("0912 345 678", "Nguyễn Minh Anh (Google)")
+                            viewModel.onLogin("0912 345 678", "Lê Văn Hùng (Google)")
                             Toast.makeText(context, "Đăng nhập với Google thành công", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.HOME
                         },
                         onAppleLoginClicked = {
-                            viewModel.onLogin("0912 345 678", "Nguyễn Minh Anh (Apple)")
+                            viewModel.onLogin("0912 345 678", "Lê Văn Hùng (Apple)")
                             Toast.makeText(context, "Đăng nhập với Apple thành công", Toast.LENGTH_SHORT).show()
                             currentScreen = AppScreen.HOME
                         }
@@ -238,10 +238,9 @@ fun SpendTogetherApp(
                         onBackClicked = {
                             currentScreen = AppScreen.HOME
                         },
-                        onAddMemberClicked = {
-                            val newNumber = (100..999).random()
-                            viewModel.onAddMember("Thành viên mới $newNumber", "09$newNumber 888")
-                            Toast.makeText(context, "Đã thêm thành viên mới!", Toast.LENGTH_SHORT).show()
+                        onAddMemberSubmit = { name, phone, isLeader ->
+                            viewModel.onAddMember(name, phone, isLeader)
+                            Toast.makeText(context, "Đã thêm thành viên $name vào nhóm!", Toast.LENGTH_SHORT).show()
                         },
                         onMemberClicked = { member ->
                             viewModel.onSelectMemberForEdit(member)
@@ -253,8 +252,8 @@ fun SpendTogetherApp(
                 AppScreen.EDIT_MEMBER -> {
                     val activeMember = uiState.selectedMember ?: uiState.members.firstOrNull()
                     EditMemberScreen(
-                        initialMemberName = activeMember?.name ?: "Tuấn Nam",
-                        initialInitials = activeMember?.initials ?: "TN",
+                        initialMemberName = activeMember?.name ?: "Nguyễn Phan Tấn Đạt",
+                        initialInitials = activeMember?.initials ?: "TĐ",
                         initialPhoneNumber = activeMember?.phoneNumber ?: "0986 420 115",
                         initialIsLeader = activeMember?.isLeader ?: false,
                         initialCanAddExpense = true,
@@ -281,8 +280,10 @@ fun SpendTogetherApp(
                     CreateExpenseScreen(
                         groupTitle = "Tạo khoản chi",
                         groupSubtitle = "Ghi vào ${uiState.userProfile.groupName}",
-                        initialAmount = "850.000",
-                        initialAmountInWords = "Tám trăm năm mươi nghìn đồng",
+                        initialAmount = "",
+                        payerName = uiState.userProfile.name,
+                        payerInitials = uiState.userProfile.initials,
+                        memberCount = uiState.members.size,
                         onBackClicked = {
                             currentScreen = AppScreen.HOME
                         },
@@ -383,6 +384,10 @@ fun SpendTogetherApp(
                         totalIncomeText = uiState.budget.depositedAmountFormatted.replace(" đ", ""),
                         totalExpenseText = uiState.budget.spentAmountFormatted.replace(" đ", ""),
                         totalBalanceText = uiState.budget.totalBalanceFormatted.replace(" đ", ""),
+                        totalSpentFormatted = uiState.totalSpentFormatted,
+                        categoryBreakdown = uiState.categoryReportItems,
+                        memberBreakdown = uiState.memberReportItems,
+                        highestSpenderNote = uiState.highestSpenderNote,
                         onExportReportClicked = {
                             Toast.makeText(context, "Đang xuất file báo cáo tài chính PDF...", Toast.LENGTH_SHORT).show()
                         },

@@ -86,8 +86,8 @@ data class TransactionDateGroup(
  */
 @Composable
 fun TransactionHistoryScreen(
-    totalTransactionsCount: Int = 23,
-    monthText: String = "Tháng 10/2026",
+    totalTransactionsCount: Int = 6,
+    monthText: String = "Tháng 11/2026",
     transactionGroups: List<TransactionDateGroup>? = null,
     onSearchClicked: () -> Unit = {},
     onFilterMemberClicked: () -> Unit = {},
@@ -97,7 +97,7 @@ fun TransactionHistoryScreen(
     onTransactionClicked: (HistoryTransactionItem) -> Unit = {},
     onNavTabSelected: (BottomNavTab) -> Unit = {}
 ) {
-    var selectedFilterMonth by remember { mutableStateOf("Tháng 10") }
+    var selectedFilterMonth by remember { mutableStateOf("Tháng 11") }
     var selectedNavTab by remember { mutableStateOf(BottomNavTab.HISTORY) }
 
     // Bảng màu thiết kế chuẩn Figma
@@ -108,58 +108,90 @@ fun TransactionHistoryScreen(
     val incomeGreen = Color(0xFF2E8B57)          // Màu xanh thu nhập
     val activePillBg = Color(0xFFCBE7D7)         // Nền pill active bottom nav
 
-    // Dữ liệu mẫu 2 nhóm ngày giao dịch theo thiết kế
+    // Dữ liệu giao dịch thực tế của Nhóm 08
     val defaultGroups = remember {
         listOf(
             TransactionDateGroup(
-                dateHeader = "Hôm nay, 03/10",
-                netTotalFormatted = "-1.170.000 đ",
+                dateHeader = "Hôm nay",
+                netTotalFormatted = "-850.000 đ",
                 transactions = listOf(
                     HistoryTransactionItem(
                         id = "1",
-                        title = "Đi chợ cuối tuần",
-                        subtitle = "Lan Anh · Ăn uống · 10:30",
+                        title = "Mua linh kiện & module đồ án",
+                        subtitle = "Lê Văn Hùng · Khác · 09:30",
                         amountFormatted = "-850.000 đ",
                         isIncome = false,
                         type = HistoryItemType.GROCERY
-                    ),
+                    )
+                )
+            ),
+            TransactionDateGroup(
+                dateHeader = "Hôm qua",
+                netTotalFormatted = "-330.000 đ",
+                transactions = listOf(
                     HistoryTransactionItem(
                         id = "2",
-                        title = "Internet tháng 10",
-                        subtitle = "Minh Anh · Nhà ở · 08:15",
-                        amountFormatted = "-320.000 đ",
+                        title = "Tiền phòng thảo luận & Internet",
+                        subtitle = "Lý Việt Linh · Nhà ở · 14:15",
+                        amountFormatted = "-330.000 đ",
                         isIncome = false,
                         type = HistoryItemType.INTERNET
                     )
                 )
             ),
             TransactionDateGroup(
-                dateHeader = "Thứ sáu, 02/10",
-                netTotalFormatted = "+1.820.000 đ",
+                dateHeader = "01/11/2026",
+                netTotalFormatted = "+5.000.000 đ",
                 transactions = listOf(
                     HistoryTransactionItem(
                         id = "3",
-                        title = "Nam nạp quỹ",
-                        subtitle = "Tuấn Nam · Thu quỹ · 19:42",
-                        amountFormatted = "+2.000.000 đ",
+                        title = "Đóng quỹ dự án đợt 1",
+                        subtitle = "Lê Văn Hùng · Thu quỹ · 10:00",
+                        amountFormatted = "+5.000.000 đ",
                         isIncome = true,
                         type = HistoryItemType.DEPOSIT
-                    ),
+                    )
+                )
+            ),
+            TransactionDateGroup(
+                dateHeader = "28/10/2026",
+                netTotalFormatted = "-145.000 đ",
+                transactions = listOf(
                     HistoryTransactionItem(
                         id = "4",
-                        title = "Cà phê họp nhóm",
-                        subtitle = "Hà My · Ăn uống · 15:20",
-                        amountFormatted = "-180.000 đ",
-                        isIncome = false,
-                        type = HistoryItemType.COFFEE
-                    ),
-                    HistoryTransactionItem(
-                        id = "5",
-                        title = "Taxi về nhà",
-                        subtitle = "Quang Phúc · Đi lại · 12:05",
-                        amountFormatted = "-210.000 đ",
+                        title = "Taxi đi in ấn tài liệu đồ án",
+                        subtitle = "Nguyễn Phan Tấn Đạt · Đi lại · 16:30",
+                        amountFormatted = "-145.000 đ",
                         isIncome = false,
                         type = HistoryItemType.TAXI
+                    )
+                )
+            ),
+            TransactionDateGroup(
+                dateHeader = "25/10/2026",
+                netTotalFormatted = "-185.000 đ",
+                transactions = listOf(
+                    HistoryTransactionItem(
+                        id = "5",
+                        title = "Cà phê & nước họp nhóm đồ án",
+                        subtitle = "Lê Trung Bình · Ăn uống · 15:20",
+                        amountFormatted = "-185.000 đ",
+                        isIncome = false,
+                        type = HistoryItemType.COFFEE
+                    )
+                )
+            ),
+            TransactionDateGroup(
+                dateHeader = "24/10/2026",
+                netTotalFormatted = "+5.000.000 đ",
+                transactions = listOf(
+                    HistoryTransactionItem(
+                        id = "6",
+                        title = "Đóng quỹ dự án đợt 1",
+                        subtitle = "Lý Việt Linh · Thu quỹ · 09:15",
+                        amountFormatted = "+5.000.000 đ",
+                        isIncome = true,
+                        type = HistoryItemType.DEPOSIT
                     )
                 )
             )
@@ -321,21 +353,52 @@ fun TransactionHistoryScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // ---------- 5. Danh sách các nhóm giao dịch theo ngày ----------
-                displayGroups.forEachIndexed { groupIndex, group ->
+                if (displayGroups.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .shadow(
-                                elevation = 4.dp,
+                                elevation = 2.dp,
                                 shape = RoundedCornerShape(22.dp),
-                                ambientColor = Color.Black.copy(alpha = 0.03f),
-                                spotColor = Color.Black.copy(alpha = 0.07f)
+                                ambientColor = Color.Black.copy(alpha = 0.04f),
+                                spotColor = Color.Black.copy(alpha = 0.06f)
                             )
                             .clip(RoundedCornerShape(22.dp))
                             .background(Color.White)
-                            .padding(horizontal = 18.dp, vertical = 16.dp)
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Không tìm thấy giao dịch nào",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = forestGreenDark
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm",
+                                fontSize = 12.5.sp,
+                                color = textMuted
+                            )
+                        }
+                    }
+                } else {
+                    displayGroups.forEachIndexed { groupIndex, group ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(
+                                    elevation = 4.dp,
+                                    shape = RoundedCornerShape(22.dp),
+                                    ambientColor = Color.Black.copy(alpha = 0.03f),
+                                    spotColor = Color.Black.copy(alpha = 0.07f)
+                                )
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(Color.White)
+                                .padding(horizontal = 18.dp, vertical = 16.dp)
+                        ) {
+                            Column(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             // Tiêu đề nhóm ngày + Tổng thu chi ngày
@@ -382,6 +445,7 @@ fun TransactionHistoryScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
+            }
 
                 Spacer(modifier = Modifier.height(18.dp))
 

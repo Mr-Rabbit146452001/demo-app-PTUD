@@ -125,8 +125,8 @@ fun ChatbotScreen(
         listOf(
             "🍲 Ăn trưa 180k Hùng trả, chia đều",
             "📊 Tình hình quỹ tháng này thế nào?",
-            "💌 Nhắc nợ bạn Linh 120k tiền lẩu",
-            "☕ Cà phê họp nhóm 85k Nam trả",
+            "💌 Nhắc nợ bạn Linh tiền đồ án",
+            "☕ Cà phê họp nhóm 85k Đạt trả",
             "💡 Mẹo tiết kiệm chi tiêu cho nhóm"
         )
     }

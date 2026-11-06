@@ -56,15 +56,15 @@ import com.example.nhoms8.ui.theme.Nhoms8Theme
  * Thiết kế chuẩn ứng dụng SpendTogether theo Figma:
  * - Nền be kem ấm áp, mảng cong xanh xô thơm
  * - Header với nút quay lại và tiêu đề cập nhật
- * - Avatar tròn viết tắt "TN" kèm icon máy ảnh đổi ảnh
+ * - Avatar tròn viết tắt "TĐ" kèm icon máy ảnh đổi ảnh
  * - Card Thông tin cá nhân: Họ tên, Số điện thoại, Vai trò (Thành viên / Trưởng nhóm)
  * - Card Phân quyền: Có thể thêm khoản chi (Toggle Đang bật / Đang tắt)
  * - Nút Lưu thay đổi & Nút Xóa khỏi nhóm
  */
 @Composable
 fun EditMemberScreen(
-    initialMemberName: String = "Tuấn Nam",
-    initialInitials: String = "TN",
+    initialMemberName: String = "Nguyễn Phan Tấn Đạt",
+    initialInitials: String = "TĐ",
     initialPhoneNumber: String = "0986 420 115",
     initialIsLeader: Boolean = false,
     initialCanAddExpense: Boolean = true,
@@ -79,6 +79,11 @@ fun EditMemberScreen(
     var isLeader by remember { mutableStateOf(initialIsLeader) }
     var canAddExpense by remember { mutableStateOf(initialCanAddExpense) }
 
+    val currentInitials = remember(memberName) {
+        val parts = memberName.trim().split(" ").filter { it.isNotBlank() }
+        parts.mapNotNull { it.firstOrNull()?.toString() }.takeLast(2).joinToString("").uppercase().ifEmpty { initialInitials }
+    }
+
     // Bảng màu thiết kế chuẩn Figma SpendTogether
     val backgroundColor = Color(0xFFF5F3EC)      // Màu be kem nhạt ấm áp
     val ambientSage = Color(0xFFDDEAE0)          // Màu xanh xô thơm nhạt trang trí
@@ -86,7 +91,7 @@ fun EditMemberScreen(
     val textMuted = Color(0xFF6E7C74)            // Màu xám xanh phụ đề
     val labelColor = Color(0xFF4A5F53)           // Màu chữ tiêu đề trường
     val inputBorderColor = Color(0xFFE6E3D8)     // Viền nhẹ cho ô nhập liệu
-    val avatarBgColor = Color(0xFFCBE3DC)        // Màu nền ngọc bích cho avatar Tuấn Nam
+    val avatarBgColor = Color(0xFFCBE3DC)        // Màu nền ngọc bích avatar
     val activeToggleGreen = Color(0xFF387E58)     // Màu xanh rêu trạng thái "Đang bật"
 
     Box(
@@ -199,7 +204,7 @@ fun EditMemberScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = initialInitials,
+                            text = currentInitials,
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
                             color = forestGreenDark,

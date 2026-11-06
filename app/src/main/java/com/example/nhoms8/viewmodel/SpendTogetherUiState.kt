@@ -7,8 +7,10 @@ import com.example.nhoms8.RecentTransaction
 import com.example.nhoms8.SplitMemberItem
 import com.example.nhoms8.TransactionDateGroup
 import com.example.nhoms8.model.BudgetState
+import com.example.nhoms8.model.CategoryReportItem
 import com.example.nhoms8.model.ChatMessage
 import com.example.nhoms8.model.DraftExpense
+import com.example.nhoms8.model.MemberReportItem
 import com.example.nhoms8.model.TransactionFilter
 import com.example.nhoms8.model.UserProfile
 
@@ -28,16 +30,20 @@ data class SpendTogetherUiState(
     val filter: TransactionFilter = TransactionFilter(),
     val autoReminderEnabled: Boolean = true,
     val splitMembers: List<SplitMemberItem> = emptyList(),
-    val totalContributedAmount: String = "21.500.000 đ",
+    val totalContributedAmount: String = "0 đ",
     val unpaidDebtsCount: Int = 0,
     val totalUnpaidDebtFormatted: String = "0 đ",
+    val categoryReportItems: List<CategoryReportItem> = emptyList(),
+    val memberReportItems: List<MemberReportItem> = emptyList(),
+    val highestSpenderNote: String = "",
+    val totalSpentFormatted: String = "0 đ",
     val authLoading: Boolean = false,
     val authErrorMessage: String? = null,
     val authSuccessMessage: String? = null,
     val firebaseUserEmail: String? = null,
     val chatMessages: List<ChatMessage> = listOf(
         ChatMessage(
-            text = "Chào bạn! Mình là FinSprout 🌱 - Trợ lý AI của SpendTogether. Mình có thể giúp bạn ghi nhanh chi tiêu bằng lời nói, kiểm tra quỹ nhóm hoặc gợi ý tin nhắn đòi nợ khéo léo. Bạn cần hỗ trợ gì hôm nay?",
+            text = "Chào bạn! Mình là FinSprout 🌱 - Trợ lý AI của SpendTogether dành riêng cho Quỹ Chi Tiêu Nhóm 08. Mình có thể giúp bạn ghi nhanh chi tiêu bằng lời nói, kiểm tra quỹ nhóm hoặc gợi ý tin nhắn đòi nợ khéo léo. Bạn cần hỗ trợ gì hôm nay?",
             isFromUser = false,
             timestampFormatted = "Vừa xong"
         )

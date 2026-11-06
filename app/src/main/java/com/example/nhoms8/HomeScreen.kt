@@ -82,14 +82,14 @@ enum class TransactionIconType {
  */
 @Composable
 fun HomeScreen(
-    userName: String = "Minh Anh",
-    userInitials: String = "MA",
-    groupName: String = "Quỹ Nhà Mình",
-    totalBalance: String = "12.680.000 đ",
-    monthLabel: String = "Tháng 10",
-    depositedAmount: String = "8.500.000 đ",
-    spentAmount: String = "5.820.000 đ",
-    recentTransactions: List<RecentTransaction>? = null,
+    userName: String = "Lê Văn Hùng",
+    userInitials: String = "VH",
+    groupName: String = "Quỹ Chi Tiêu Nhóm 08",
+    totalBalance: String = "8.490.000 đ",
+    monthLabel: String = "Tháng 11",
+    depositedAmount: String = "10.000.000 đ",
+    spentAmount: String = "1.510.000 đ",
+    recentTransactions: List<RecentTransaction> = emptyList(),
     onNotificationClicked: () -> Unit = {},
     onAddExpenseClicked: () -> Unit = {},
     onTopUpFundClicked: () -> Unit = {},
@@ -109,36 +109,6 @@ fun HomeScreen(
     val textMuted = Color(0xFF6E7C74)            // Màu xám xanh phụ đề
     val avatarBgColor = Color(0xFFC4E2D3)        // Màu nền avatar viết tắt
     val actionGreen = Color(0xFF4A725E)          // Màu xanh nút xem tất cả / liên kết
-
-    // Danh sách giao dịch mẫu đồng bộ với thiết kế
-    val sampleTransactions = remember {
-        listOf(
-            RecentTransaction(
-                id = "1",
-                title = "Đi chợ cuối tuần",
-                subtitle = "Hôm nay · Lan đã trả",
-                amountFormatted = "-850.000 đ",
-                isIncome = false,
-                iconType = TransactionIconType.GROCERY
-            ),
-            RecentTransaction(
-                id = "2",
-                title = "Internet tháng 10",
-                subtitle = "Hôm qua · Minh Anh đã trả",
-                amountFormatted = "-320.000 đ",
-                isIncome = false,
-                iconType = TransactionIconType.INTERNET
-            ),
-            RecentTransaction(
-                id = "3",
-                title = "Nam nạp quỹ",
-                subtitle = "02/10 · Chuyển khoản",
-                amountFormatted = "+2.000.000 đ",
-                isIncome = true,
-                iconType = TransactionIconType.DEPOSIT
-            )
-        )
-    }
 
     Box(
         modifier = Modifier
@@ -434,17 +404,41 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        val transactionsList = recentTransactions ?: sampleTransactions
+                        val transactionsList = recentTransactions
 
-                        // Danh sách giao dịch
-                        transactionsList.forEachIndexed { index, item ->
-                            TransactionRowItem(
-                                transaction = item,
-                                onClick = { onTransactionClicked(item) }
-                            )
+                        if (transactionsList.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "Chưa có giao dịch nào trong quỹ",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = textMuted
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Bấm 'Thêm chi' hoặc 'Nạp quỹ' để ghi chép",
+                                        fontSize = 12.sp,
+                                        color = textMuted.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        } else {
+                            // Danh sách giao dịch
+                            transactionsList.forEachIndexed { index, item ->
+                                TransactionRowItem(
+                                    transaction = item,
+                                    onClick = { onTransactionClicked(item) }
+                                )
 
-                            if (index < transactionsList.size - 1) {
-                                Spacer(modifier = Modifier.height(14.dp))
+                                if (index < transactionsList.size - 1) {
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                }
                             }
                         }
                     }

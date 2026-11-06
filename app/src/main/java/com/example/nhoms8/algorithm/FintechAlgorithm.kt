@@ -26,6 +26,110 @@ object FintechAlgorithm {
     }
 
     /**
+     * Định dạng tiền tệ rút gọn cho biểu đồ & KPI (ví dụ: 1.800.000 -> 1,8 tr, 450.000 -> 450k)
+     */
+    fun formatShortVnd(amount: Long): String {
+        return when {
+            amount >= 1_000_000_000L -> {
+                val b = amount.toDouble() / 1_000_000_000.0
+                String.format(java.util.Locale.US, "%.1f tỷ", b).replace('.', ',')
+            }
+            amount >= 1_000_000L -> {
+                val m = amount.toDouble() / 1_000_000.0
+                if (amount % 1_000_000L == 0L) "${amount / 1_000_000L} tr"
+                else String.format(java.util.Locale.US, "%.1f tr", m).replace('.', ',')
+            }
+            amount >= 1_000L -> {
+                val k = amount.toDouble() / 1_000.0
+                if (amount % 1_000L == 0L) "${amount / 1_000L}k"
+                else String.format(java.util.Locale.US, "%.0fk", k)
+            }
+            else -> "$amount đ"
+        }
+    }
+
+    /**
+     * Lấy ngày hôm nay định dạng tiếng Việt chuẩn: "dd tháng MM, yyyy"
+     */
+    fun getTodayFormatted(): String {
+        val sdf = java.text.SimpleDateFormat("dd 'tháng' MM, yyyy", java.util.Locale.forLanguageTag("vi-VN"))
+        return sdf.format(java.util.Date())
+    }
+
+    /**
+     * Đọc số tiền bằng chữ tiếng Việt (Vietnamese Number to Words)
+     * Ví dụ: 850000 -> "Tám trăm năm mươi nghìn đồng"
+     */
+    fun convertNumberToWords(amount: Long): String {
+        if (amount <= 0L) return "Không đồng"
+
+        val units = arrayOf("", "nghìn", "triệu", "tỷ")
+        val digits = arrayOf("không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín")
+
+        fun readThreeDigits(n: Int, isHighest: Boolean): String {
+            val h = n / 100
+            val t = (n % 100) / 10
+            val u = n % 10
+            if (h == 0 && t == 0 && u == 0) return ""
+
+            val sb = StringBuilder()
+            if (!isHighest || h > 0) {
+                sb.append("${digits[h]} trăm ")
+            }
+
+            when (t) {
+                0 -> {
+                    if (u > 0) {
+                        if (!isHighest || h > 0) sb.append("lẻ ")
+                        sb.append("${digits[u]} ")
+                    }
+                }
+                1 -> {
+                    sb.append("mười ")
+                    when (u) {
+                        0 -> {}
+                        5 -> sb.append("lăm ")
+                        else -> sb.append("${digits[u]} ")
+                    }
+                }
+                else -> {
+                    sb.append("${digits[t]} mươi ")
+                    when (u) {
+                        0 -> {}
+                        1 -> sb.append("mốt ")
+                        4 -> sb.append("tư ")
+                        5 -> sb.append("lăm ")
+                        else -> sb.append("${digits[u]} ")
+                    }
+                }
+            }
+            return sb.toString().trim()
+        }
+
+        var temp = amount
+        val groups = mutableListOf<Int>()
+        while (temp > 0) {
+            groups.add((temp % 1000).toInt())
+            temp /= 1000
+        }
+
+        val resultWords = mutableListOf<String>()
+        for (i in groups.indices.reversed()) {
+            val n = groups[i]
+            if (n > 0) {
+                val groupText = readThreeDigits(n, i == groups.size - 1)
+                val unit = units.getOrElse(i) { "" }
+                val part = if (unit.isNotEmpty()) "$groupText $unit" else groupText
+                resultWords.add(part)
+            }
+        }
+
+        val fullText = resultWords.joinToString(" ").trim()
+        val capitalized = fullText.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        return "$capitalized đồng"
+    }
+
+    /**
      * Thuật toán Chia đều tiền (Equal Split)
      * Đảm bảo tính toán chính xác tới từng đồng, xử lý trường hợp chia có số dư lẻ:
      * Ví dụ: 100.000 đ chia cho 3 người -> [33.334 đ, 33.333 đ, 33.333 đ]

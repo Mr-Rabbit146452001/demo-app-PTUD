@@ -124,7 +124,7 @@ class GeminiChatRepository(
                 val amount = extractJsonField(jsonString, "amount")?.toLongOrNull() ?: 0L
                 val categoryStr = extractJsonField(jsonString, "category") ?: "FOOD"
                 val categoryName = extractJsonField(jsonString, "categoryName") ?: "Ăn uống"
-                val payerName = extractJsonField(jsonString, "payerName") ?: "Minh Anh"
+                val payerName = extractJsonField(jsonString, "payerName") ?: "Lê Văn Hùng"
                 val splitSummary = extractJsonField(jsonString, "splitSummary") ?: "Chia đều cho cả nhóm"
 
                 val category = when (categoryStr) {

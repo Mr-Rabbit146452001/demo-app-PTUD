@@ -77,7 +77,8 @@ fun ProfileScreen(
     onSecurityClicked: () -> Unit = {},
     onHelpClicked: () -> Unit = {},
     onLogoutClicked: () -> Unit = {},
-    onNavTabSelected: (BottomNavTab) -> Unit = {}
+    onNavTabSelected: (BottomNavTab) -> Unit = {},
+    showBottomBar: Boolean = true
 ) {
     // Bảng màu thiết kế chuẩn Figma SpendTogether
     val backgroundColor = Color(0xFFF5F3EC)      // Màu be kem nhạt ấm áp
@@ -675,14 +676,19 @@ fun ProfileScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(if (showBottomBar) 24.dp else 108.dp))
+                if (!showBottomBar) {
+                    Spacer(modifier = Modifier.navigationBarsPadding())
+                }
             }
 
             // ====================== 6. THANH ĐIỀU HƯỚNG ĐÁY ======================
-            ProfileBottomNavBar(
-                selectedTab = BottomNavTab.PROFILE,
-                onTabSelected = onNavTabSelected
-            )
+            if (showBottomBar) {
+                ProfileBottomNavBar(
+                    selectedTab = BottomNavTab.PROFILE,
+                    onTabSelected = onNavTabSelected
+                )
+            }
         }
     }
 }

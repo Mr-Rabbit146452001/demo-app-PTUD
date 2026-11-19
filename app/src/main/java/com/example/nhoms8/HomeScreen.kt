@@ -98,7 +98,9 @@ fun HomeScreen(
     onViewAllTransactionsClicked: () -> Unit = {},
     onTransactionClicked: (RecentTransaction) -> Unit = {},
     onChatbotClicked: () -> Unit = {},
-    onNavTabSelected: (BottomNavTab) -> Unit = {}
+    onNavTabSelected: (BottomNavTab) -> Unit = {},
+    showBottomBar: Boolean = true,
+    onReportsClicked: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf(BottomNavTab.HOME) }
 
@@ -230,6 +232,7 @@ fun HomeScreen(
                         )
                         .clip(RoundedCornerShape(24.dp))
                         .background(forestGreenDark)
+                        .clickable { onReportsClicked() }
                         .padding(20.dp)
                 ) {
                     Column(
@@ -444,24 +447,30 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(if (showBottomBar) 24.dp else 108.dp))
+                if (!showBottomBar) {
+                    Spacer(modifier = Modifier.navigationBarsPadding())
+                }
             }
 
             // ---------- 6. Thanh điều hướng đáy (Bottom Navigation Bar) ----------
-            BottomNavBar(
-                selectedTab = selectedTab,
-                onTabSelected = {
-                    selectedTab = it
-                    onNavTabSelected(it)
-                }
-            )
+            if (showBottomBar) {
+                BottomNavBar(
+                    selectedTab = selectedTab,
+                    onTabSelected = {
+                        selectedTab = it
+                        onNavTabSelected(it)
+                    }
+                )
+            }
         }
 
         // ====================== NÚT NỔI FAB TRỢ LÝ AI FINSPROUT ======================
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 76.dp, end = 16.dp)
+                .then(if (showBottomBar) Modifier else Modifier.navigationBarsPadding())
+                .padding(bottom = if (showBottomBar) 76.dp else 106.dp, end = 16.dp)
         ) {
             Surface(
                 onClick = onChatbotClicked,

@@ -15,7 +15,7 @@ import kotlin.coroutines.resume
  * Kết quả trả về của các thao tác xác thực Firebase
  */
 sealed class AuthResult {
-    data class Success(val user: FirebaseUser, val message: String) : AuthResult()
+    data class Success(val user: FirebaseUser?, val message: String) : AuthResult()
     data class Error(val message: String) : AuthResult()
 }
 
@@ -145,12 +145,17 @@ class FirebaseAuthRepository(
                 return@suspendCancellableCoroutine
             }
 
+            if (emailOrPhone.isBlank()) {
+                continuation.resume(AuthResult.Error("Vui lòng nhập email hoặc số điện thoại để khôi phục mật khẩu"))
+                return@suspendCancellableCoroutine
+            }
+
             val email = normalizeEmail(emailOrPhone)
             currentAuth.sendPasswordResetEmail(email)
                 .addOnSuccessListener {
                     continuation.resume(
                         AuthResult.Success(
-                            currentAuth.currentUser ?: userMock(),
+                            currentAuth.currentUser,
                             "Đã gửi liên kết khôi phục mật khẩu đến $email"
                         )
                     )
@@ -186,9 +191,5 @@ class FirebaseAuthRepository(
             else ->
                 e.localizedMessage ?: "Đã xảy ra lỗi trong quá trình xác thực."
         }
-    }
-
-    private fun userMock(): FirebaseUser {
-        return auth?.currentUser ?: throw IllegalStateException("No user")
     }
 }

@@ -12,28 +12,81 @@ import com.example.nhoms8.data.AuthResult
 import com.example.nhoms8.data.FirebaseAuthRepository
 import com.example.nhoms8.data.GeminiChatRepository
 import com.example.nhoms8.data.SpendTogetherRepository
+import com.example.nhoms8.data.firestore.FirestoreSpendlyRepository
+import com.example.nhoms8.domain.model.ExpenseParticipant
+import com.example.nhoms8.domain.model.GroupRole
+import com.example.nhoms8.domain.model.MemberBalance
+import com.example.nhoms8.domain.model.RecordStatus
+import com.example.nhoms8.domain.model.SpendlyCategory
+import com.example.nhoms8.domain.model.SpendlyExpense
+import com.example.nhoms8.domain.model.SpendlyGroup
+import com.example.nhoms8.domain.model.SpendlyGroupMember
+import com.example.nhoms8.domain.model.SpendlyIncome
+import com.example.nhoms8.domain.model.SplitMethod
+import com.example.nhoms8.domain.usecase.DebtTransfer
+import com.example.nhoms8.domain.usecase.EngineSplitMode
+import com.example.nhoms8.domain.usecase.ParticipantInput
+import com.example.nhoms8.domain.usecase.SplitCalculationEngine
+import com.example.nhoms8.domain.usecase.SplitValidationResult
 import com.example.nhoms8.model.BudgetState
 import com.example.nhoms8.model.ChatExpenseProposal
 import com.example.nhoms8.model.ChatMessage
 import com.example.nhoms8.model.ChatReminderProposal
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * ViewModel trung tâm cho toàn bộ 15 màn hình Jetpack Compose (SpendTogetherViewModel)
- * Tích hợp Firebase Authentication & StateFlow
+ * Tích hợp Firebase Authentication, StateFlow và cầu nối Cloud Firestore cho Trợ lý FinSprout AI
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class SpendTogetherViewModel(
     private val repository: SpendTogetherRepository = SpendTogetherRepository(),
     private val firebaseAuthRepository: FirebaseAuthRepository = FirebaseAuthRepository(),
-    private val geminiChatRepository: GeminiChatRepository = GeminiChatRepository()
+    private val geminiChatRepository: GeminiChatRepository = GeminiChatRepository(),
+    spendlyRepository: FirestoreSpendlyRepository? = null
 ) : ViewModel() {
+
+    private data class ActiveGroupSnapshot(
+        val group: SpendlyGroup? = null,
+        val members: List<SpendlyGroupMember> = emptyList(),
+        val expenses: List<SpendlyExpense> = emptyList(),
+        val incomes: List<SpendlyIncome> = emptyList(),
+        val balances: List<MemberBalance> = emptyList()
+    )
+
+    private data class GroupFinancialSummary(
+        val group: SpendlyGroup,
+        val members: List<SpendlyGroupMember>,
+        val activeExpenses: List<SpendlyExpense>,
+        val activeIncomes: List<SpendlyIncome>,
+        val totalIncome: Long,
+        val totalSpent: Long,
+        val availableBalance: Long,
+        val monthlyLimit: Long,
+        val transfers: List<DebtTransfer>,
+        val memberNamesById: Map<String, String>
+    )
+
+    private data class BridgeUiSlice(
+        val activeGroupId: String? = null,
+        val snapshot: ActiveGroupSnapshot = ActiveGroupSnapshot(),
+        val unreadNotificationsCount: Int = 0
+    )
 
     // Danh sách thành viên tham gia chia tiền tại màn hình SplitBill
     private val _splitSelection = MutableStateFlow<Map<String, Boolean>>(emptyMap())
@@ -43,6 +96,14 @@ class SpendTogetherViewModel(
     private val _authErrorMessage = MutableStateFlow<String?>(null)
     private val _authSuccessMessage = MutableStateFlow<String?>(null)
     private val _firebaseUserEmail = MutableStateFlow<String?>(firebaseAuthRepository.getCurrentUser()?.email)
+
+    // Trạng thái cầu nối Firestore Group & Thông báo
+    private val _spendlyRepo = MutableStateFlow<FirestoreSpendlyRepository?>(spendlyRepository)
+    private val _activeGroupId = MutableStateFlow<String?>(null)
+    private val _activeGroupSnapshot = MutableStateFlow(ActiveGroupSnapshot())
+    private val _activeUserUid = MutableStateFlow<String?>(firebaseAuthRepository.getCurrentUser()?.uid)
+    private val _unreadNotificationsCount = MutableStateFlow(0)
+    private var externalGroupIdSyncJob: Job? = null
 
     // Trạng thái Trợ lý AI FinSprout Chatbot
     private val _chatMessages = MutableStateFlow<List<ChatMessage>>(
@@ -56,12 +117,71 @@ class SpendTogetherViewModel(
     )
     private val _isChatbotTyping = MutableStateFlow(false)
 
+    private val _bridgeSlice = combine(
+        _activeGroupId,
+        _activeGroupSnapshot,
+        _unreadNotificationsCount
+    ) { activeGroupId, snapshot, unreadCount ->
+        BridgeUiSlice(
+            activeGroupId = activeGroupId,
+            snapshot = snapshot,
+            unreadNotificationsCount = unreadCount
+        )
+    }
+
     init {
         // Tự động đồng bộ tài khoản Firebase nếu đã đăng nhập từ trước
         firebaseAuthRepository.getCurrentUser()?.let { user ->
             val email = user.email ?: ""
-            val name = user.displayName ?: "Lê Văn Hùng"
+            val name = user.displayName?.takeIf { it.isNotBlank() } ?: "Lê Văn Hùng"
             repository.login(email, name)
+            syncFirebaseUser(user.uid, name, email)
+        }
+
+        // Lắng nghe thời gian thực dữ liệu nhóm Firestore đang hoạt động
+        viewModelScope.launch {
+            combine(_spendlyRepo, _activeGroupId) { repo, groupId ->
+                repo to groupId
+            }.flatMapLatest { (repo, groupId) ->
+                if (repo == null || groupId.isNullOrBlank()) {
+                    flowOf(ActiveGroupSnapshot())
+                } else {
+                    combine(
+                        repo.observeGroup(groupId).catch { emit(null) },
+                        repo.observeGroupMembers(groupId).catch { emit(emptyList()) },
+                        repo.observeExpenses(groupId).catch { emit(emptyList()) },
+                        repo.observeIncomes(groupId).catch { emit(emptyList()) },
+                        repo.observeMemberBalances(groupId).catch { emit(emptyList()) }
+                    ) { group, members, expenses, incomes, balances ->
+                        ActiveGroupSnapshot(
+                            group = group,
+                            members = members,
+                            expenses = expenses,
+                            incomes = incomes,
+                            balances = balances
+                        )
+                    }
+                }
+            }.collect { snapshot ->
+                _activeGroupSnapshot.value = snapshot
+            }
+        }
+
+        // Lắng nghe số lượng thông báo chưa đọc của người dùng hiện tại
+        viewModelScope.launch {
+            combine(_spendlyRepo, _activeUserUid) { repo, uid ->
+                repo to uid
+            }.flatMapLatest { (repo, uid) ->
+                if (repo == null || uid.isNullOrBlank()) {
+                    flowOf(0)
+                } else {
+                    repo.observeNotifications(uid)
+                        .map { notifications -> notifications.count { !it.isRead } }
+                        .catch { emit(0) }
+                }
+            }.collect { count ->
+                _unreadNotificationsCount.value = count
+            }
         }
     }
 
@@ -82,7 +202,8 @@ class SpendTogetherViewModel(
         _authSuccessMessage,
         _firebaseUserEmail,
         _chatMessages,
-        _isChatbotTyping
+        _isChatbotTyping,
+        _bridgeSlice
     ) { params ->
         val userProfile = params[0] as com.example.nhoms8.model.UserProfile
         val members = params[1] as List<GroupMember>
@@ -100,6 +221,7 @@ class SpendTogetherViewModel(
         val firebaseUserEmail = params[13] as String?
         val chatMessages = params[14] as List<ChatMessage>
         val isChatbotTyping = params[15] as Boolean
+        val bridgeSlice = params[16] as BridgeUiSlice
 
         // 1. Chuyển đổi giao dịch gần đây cho HomeScreen
         val recentTransactions = transactions.map { it.toRecentTransaction() }
@@ -196,6 +318,9 @@ class SpendTogetherViewModel(
             "Chưa có khoản chi"
         }
 
+        val activeGroupName = bridgeSlice.snapshot.group?.name?.takeIf { it.isNotBlank() }
+            ?: userProfile.groupName
+
         SpendTogetherUiState(
             userProfile = userProfile,
             members = members,
@@ -220,13 +345,77 @@ class SpendTogetherViewModel(
             authSuccessMessage = authSuccessMessage,
             firebaseUserEmail = firebaseUserEmail,
             chatMessages = chatMessages,
-            isChatbotTyping = isChatbotTyping
+            isChatbotTyping = isChatbotTyping,
+            activeGroupId = bridgeSlice.activeGroupId,
+            activeGroupName = activeGroupName,
+            unreadNotificationsCount = bridgeSlice.unreadNotificationsCount
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
         initialValue = SpendTogetherUiState()
     )
+
+    // ==================== CẦU NỐI FIRESTORE GROUP & SERVICE LOCATOR ====================
+
+    /**
+     * Gắn ViewModel với kho dữ liệu FirestoreSpendlyRepository và luồng activeGroupId dùng chung.
+     */
+    fun bindToSpendlyRepository(
+        spendlyRepo: FirestoreSpendlyRepository,
+        activeGroupIdFlow: StateFlow<String?>
+    ) {
+        _spendlyRepo.value = spendlyRepo
+        _activeGroupId.value = activeGroupIdFlow.value?.takeIf { it.isNotBlank() }
+
+        externalGroupIdSyncJob?.cancel()
+        externalGroupIdSyncJob = viewModelScope.launch {
+            activeGroupIdFlow.collect { groupId ->
+                _activeGroupId.value = groupId?.takeIf { it.isNotBlank() }
+            }
+        }
+
+        _activeUserUid.value?.takeIf { it.isNotBlank() }?.let { uid ->
+            val profile = repository.userProfile.value
+            val email = _firebaseUserEmail.value ?: profile.phoneNumber
+            syncFirebaseUser(uid, profile.name, email)
+        }
+    }
+
+    /**
+     * Cập nhật trực tiếp nhóm/quỹ đang hoạt động cho ViewModel.
+     */
+    fun setActiveGroupId(groupId: String?) {
+        _activeGroupId.value = groupId?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Đồng bộ hồ sơ người dùng Firebase lên collection `users/{uid}` và kích hoạt đếm thông báo chưa đọc.
+     */
+    fun syncFirebaseUser(uid: String, name: String, email: String) {
+        if (uid.isBlank()) return
+        _activeUserUid.value = uid
+        val repo = _spendlyRepo.value ?: return
+        viewModelScope.launch {
+            repo.ensureUserProfile(
+                uid = uid,
+                fullName = name,
+                email = email
+            )
+        }
+    }
+
+    /**
+     * Theo dõi số lượng thông báo chưa đọc theo thời gian thực cho người dùng [uid].
+     */
+    fun observeUnreadNotificationsCount(uid: String) {
+        if (uid.isBlank()) {
+            _activeUserUid.value = null
+            _unreadNotificationsCount.value = 0
+            return
+        }
+        _activeUserUid.value = uid
+    }
 
     // ==================== XÁC THỰC FIREBASE AUTH ====================
 
@@ -241,10 +430,17 @@ class SpendTogetherViewModel(
             when (val result = firebaseAuthRepository.signIn(emailOrPhone, password)) {
                 is AuthResult.Success -> {
                     _authLoading.value = false
-                    _firebaseUserEmail.value = result.user.email
+                    _firebaseUserEmail.value = result.user?.email
                     _authSuccessMessage.value = result.message
-                    val displayName = result.user.displayName ?: "Lê Văn Hùng"
+                    val displayName = result.user?.displayName?.takeIf { it.isNotBlank() } ?: "Lê Văn Hùng"
                     repository.login(emailOrPhone, displayName)
+                    result.user?.let { fbUser ->
+                        syncFirebaseUser(
+                            uid = fbUser.uid,
+                            name = displayName,
+                            email = fbUser.email ?: emailOrPhone
+                        )
+                    }
                     onSuccess()
                 }
                 is AuthResult.Error -> {
@@ -267,10 +463,17 @@ class SpendTogetherViewModel(
             when (val result = firebaseAuthRepository.signUp(emailOrPhone, password, name)) {
                 is AuthResult.Success -> {
                     _authLoading.value = false
-                    _firebaseUserEmail.value = result.user.email
+                    _firebaseUserEmail.value = result.user?.email
                     _authSuccessMessage.value = result.message
                     repository.login(emailOrPhone, name)
                     repository.addMember(name, emailOrPhone, isLeader = false)
+                    result.user?.let { fbUser ->
+                        syncFirebaseUser(
+                            uid = fbUser.uid,
+                            name = name,
+                            email = fbUser.email ?: emailOrPhone
+                        )
+                    }
                     onSuccess()
                 }
                 is AuthResult.Error -> {
@@ -293,6 +496,8 @@ class SpendTogetherViewModel(
     fun signOutFromFirebase() {
         firebaseAuthRepository.signOut()
         _firebaseUserEmail.value = null
+        _activeUserUid.value = null
+        _unreadNotificationsCount.value = 0
     }
 
     fun clearAuthError() {
@@ -398,19 +603,12 @@ class SpendTogetherViewModel(
         viewModelScope.launch {
             _isChatbotTyping.value = true
             val currentBudget = repository.budget.value
+            val activeSnapshot = resolveActiveSnapshot()
 
             // 1. Nếu đã cấu hình Google Gemini API Key trong local.properties: Gọi Gemini 1.5 Flash
             if (geminiChatRepository.isApiKeyConfigured()) {
                 try {
-                    val currentMembers = repository.members.value.joinToString { "${it.name} (${if (it.isLeader) "Trưởng nhóm" else "Thành viên"})" }
-                    val contextPrompt = """
-                        • Nhóm: ${uiState.value.userProfile.groupName}
-                        • Số dư quỹ hiện tại: ${currentBudget.totalBalanceFormatted}
-                        • Đã chi tháng này: ${currentBudget.spentAmountFormatted} / ${currentBudget.monthlyLimitFormatted}
-                        • Danh sách thành viên: $currentMembers
-                        • Người dùng: ${uiState.value.userProfile.name}
-                    """.trimIndent()
-
+                    val contextPrompt = buildContextPrompt(activeSnapshot, currentBudget)
                     val geminiResult = geminiChatRepository.sendMessage(trimmed, contextPrompt)
                     val botMessage = ChatMessage(
                         text = geminiResult.cleanText,
@@ -428,17 +626,142 @@ class SpendTogetherViewModel(
 
             // 2. Chế độ dự phòng thông minh (Offline / Mock Intelligent Fallback)
             delay(500)
-            val botResponse = processLocalSmartChat(trimmed, currentBudget)
+            val botResponse = processLocalSmartChat(trimmed, currentBudget, activeSnapshot)
             _chatMessages.update { it + botResponse }
             _isChatbotTyping.value = false
         }
     }
 
+    internal suspend fun buildChatbotContextPrompt(): String {
+        val snapshot = resolveActiveSnapshot()
+        return buildContextPrompt(snapshot, repository.budget.value)
+    }
+
+    private suspend fun resolveActiveSnapshot(): ActiveGroupSnapshot {
+        val repo = _spendlyRepo.value ?: return ActiveGroupSnapshot()
+        val groupId = _activeGroupId.value?.takeIf { it.isNotBlank() } ?: return ActiveGroupSnapshot()
+        val cached = _activeGroupSnapshot.value
+        if (cached.group?.groupId == groupId && cached.members.isNotEmpty()) {
+            return cached
+        }
+        val fetched = withTimeoutOrNull(1_500L) {
+            val group = repo.observeGroup(groupId).first()
+            if (group == null) {
+                ActiveGroupSnapshot()
+            } else {
+                ActiveGroupSnapshot(
+                    group = group,
+                    members = repo.observeGroupMembers(groupId).first(),
+                    expenses = repo.observeExpenses(groupId).first(),
+                    incomes = repo.observeIncomes(groupId).first(),
+                    balances = repo.observeMemberBalances(groupId).first()
+                )
+            }
+        } ?: cached
+        if (fetched.group != null) {
+            _activeGroupSnapshot.value = fetched
+        }
+        return fetched
+    }
+
+    private fun summarizeGroup(snapshot: ActiveGroupSnapshot): GroupFinancialSummary? {
+        val group = snapshot.group ?: return null
+        val activeMembers = snapshot.members.filter { it.status == "ACTIVE" }
+        val activeExpenses = snapshot.expenses.filter { it.status == RecordStatus.ACTIVE }
+        val activeIncomes = snapshot.incomes.filter { it.status == RecordStatus.ACTIVE }
+        val totalIncome = activeIncomes.sumOf { it.amount }
+        val totalSpent = activeExpenses.sumOf { it.amount }
+        val availableBalance = if (totalIncome > 0L) {
+            totalIncome - totalSpent
+        } else {
+            group.monthlyBudgetLimit - totalSpent
+        }
+        val netBalanceMap = snapshot.balances.associate { it.userId to it.netBalance }
+        val transfers = SplitCalculationEngine.computeGreedySettlements(netBalanceMap)
+        val memberNamesById = activeMembers.associate { it.userId to it.displayName }
+
+        return GroupFinancialSummary(
+            group = group,
+            members = activeMembers,
+            activeExpenses = activeExpenses,
+            activeIncomes = activeIncomes,
+            totalIncome = totalIncome,
+            totalSpent = totalSpent,
+            availableBalance = availableBalance,
+            monthlyLimit = group.monthlyBudgetLimit,
+            transfers = transfers,
+            memberNamesById = memberNamesById
+        )
+    }
+
+    private fun buildContextPrompt(
+        snapshot: ActiveGroupSnapshot,
+        fallbackBudget: BudgetState
+    ): String {
+        val summary = summarizeGroup(snapshot) ?: return buildLegacyContextPrompt(fallbackBudget)
+
+        val membersText = if (summary.members.isNotEmpty()) {
+            summary.members.joinToString { "${it.displayName} (${it.role.label})" }
+        } else {
+            "Chưa có thành viên"
+        }
+        val recentExpensesText = if (summary.activeExpenses.isNotEmpty()) {
+            summary.activeExpenses.take(5).joinToString("; ") { exp ->
+                "${exp.title}: ${FintechAlgorithm.formatVnd(exp.amount)} (${exp.payerName} trả, ${exp.category.label})"
+            }
+        } else {
+            "Chưa có khoản chi nào"
+        }
+        val debtsText = if (summary.transfers.isNotEmpty()) {
+            summary.transfers.joinToString("; ") { transfer ->
+                val fromName = summary.memberNamesById[transfer.fromUserId] ?: transfer.fromUserId
+                val toName = summary.memberNamesById[transfer.toUserId] ?: transfer.toUserId
+                "$fromName nợ $toName ${FintechAlgorithm.formatVnd(transfer.amount)}"
+            }
+        } else {
+            "Không có công nợ chưa thanh toán"
+        }
+        val spentPercent = if (summary.monthlyLimit > 0L) {
+            summary.totalSpent * 100L / summary.monthlyLimit
+        } else 0L
+        val currentUserName = resolveActiveUserName(summary.members)
+
+        return """
+            • Nhóm: ${summary.group.name}
+            • Mô tả quỹ: ${summary.group.description.ifBlank { "Quỹ chi tiêu nhóm" }}
+            • Số dư quỹ hiện tại: ${FintechAlgorithm.formatVnd(summary.availableBalance)}
+            • Tổng thu / nạp quỹ: ${FintechAlgorithm.formatVnd(summary.totalIncome)}
+            • Đã chi tháng này: ${FintechAlgorithm.formatVnd(summary.totalSpent)} / ${FintechAlgorithm.formatVnd(summary.monthlyLimit)} ($spentPercent%)
+            • Danh sách thành viên (${summary.members.size}): $membersText
+            • Các khoản chi gần đây: $recentExpensesText
+            • Công nợ cần quyết toán: $debtsText
+            • Người dùng: $currentUserName
+        """.trimIndent()
+    }
+
+    private fun buildLegacyContextPrompt(currentBudget: BudgetState): String {
+        val currentMembers = repository.members.value.joinToString {
+            "${it.name} (${if (it.isLeader) "Trưởng nhóm" else "Thành viên"})"
+        }
+        return """
+            • Nhóm: ${uiState.value.userProfile.groupName}
+            • Số dư quỹ hiện tại: ${currentBudget.totalBalanceFormatted}
+            • Đã chi tháng này: ${currentBudget.spentAmountFormatted} / ${currentBudget.monthlyLimitFormatted}
+            • Danh sách thành viên: $currentMembers
+            • Người dùng: ${uiState.value.userProfile.name}
+        """.trimIndent()
+    }
+
     /**
      * Bộ xử lý ngôn ngữ tự nhiên thông minh nội bộ (dự phòng khi không có mạng hoặc chưa nhập Gemini API Key)
      */
-    private fun processLocalSmartChat(trimmed: String, currentBudget: BudgetState): ChatMessage {
+    private fun processLocalSmartChat(
+        trimmed: String,
+        currentBudget: BudgetState,
+        activeSnapshot: ActiveGroupSnapshot = ActiveGroupSnapshot()
+    ): ChatMessage {
         val lower = trimmed.lowercase()
+        val groupSummary = summarizeGroup(activeSnapshot)
 
         // Phân tích tạo khoản chi ("ăn", "uống", "chi", "trả", "k", "đ", "tiền", "mua", "lẩu", "cà phê")
         val amountRegex = Regex("(\\d+[.,]?\\d*)\\s*(k|nghìn|ngàn|tr|triệu|đ|vnd)?", RegexOption.IGNORE_CASE)
@@ -457,13 +780,14 @@ class SpendTogetherViewModel(
         val isExpenseIntent = (detectedAmount != null && detectedAmount > 0) &&
                 (lower.contains("ăn") || lower.contains("uống") || lower.contains("chi") || lower.contains("trả") ||
                         lower.contains("mua") || lower.contains("hết") || lower.contains("tiền") || lower.contains("lẩu") ||
-                        lower.contains("phở") || lower.contains("cơm") || lower.contains("cafe") || lower.contains("trà sữa") ||
-                        lower.contains("vé") || lower.contains("xe") || lower.contains("nhà") || lower.contains("đi chợ"))
+                        lower.contains("phở") || lower.contains("cơm") || lower.contains("cafe") || lower.contains("cà phê") ||
+                        lower.contains("trà sữa") || lower.contains("vé") || lower.contains("xe") || lower.contains("nhà") ||
+                        lower.contains("đi chợ") || lower.contains("khách sạn") || lower.contains("phòng"))
 
         return when {
             isExpenseIntent -> {
                 val category = when {
-                    lower.contains("nhà") || lower.contains("điện") || lower.contains("nước") || lower.contains("mạng") -> ExpenseCategory.HOUSING
+                    lower.contains("nhà") || lower.contains("điện") || lower.contains("nước") || lower.contains("mạng") || lower.contains("phòng") || lower.contains("khách sạn") -> ExpenseCategory.HOUSING
                     lower.contains("xe") || lower.contains("taxi") || lower.contains("xăng") || lower.contains("grab") -> ExpenseCategory.TRANSPORT
                     lower.contains("mua") || lower.contains("quần") || lower.contains("áo") -> ExpenseCategory.OTHER
                     else -> ExpenseCategory.FOOD
@@ -475,12 +799,17 @@ class SpendTogetherViewModel(
                     ExpenseCategory.OTHER -> "Chi tiêu khác"
                 }
 
-                val payer = when {
-                    lower.contains("hùng") -> "Lê Văn Hùng"
-                    lower.contains("linh") -> "Lý Việt Linh"
-                    lower.contains("đạt") -> "Nguyễn Phan Tấn Đạt"
-                    lower.contains("bình") -> "Lê Trung Bình"
-                    else -> uiState.value.userProfile.name
+                val payer = if (groupSummary != null && groupSummary.members.isNotEmpty()) {
+                    findMentionedMember(trimmed, groupSummary.members)?.displayName
+                        ?: resolveActiveUserName(groupSummary.members)
+                } else {
+                    when {
+                        lower.contains("hùng") -> "Lê Văn Hùng"
+                        lower.contains("linh") -> "Lý Việt Linh"
+                        lower.contains("đạt") -> "Nguyễn Phan Tấn Đạt"
+                        lower.contains("bình") -> "Lê Trung Bình"
+                        else -> uiState.value.userProfile.name
+                    }
                 }
 
                 val title = when {
@@ -489,9 +818,18 @@ class SpendTogetherViewModel(
                     lower.contains("trà sữa") -> "Trà sữa chiều"
                     lower.contains("cơm") -> "Cơm trưa nhóm"
                     lower.contains("bún bò") -> "Bún bò Huế trưa"
+                    lower.contains("ăn tối") -> "Ăn tối nhóm"
+                    lower.contains("ăn trưa") -> "Ăn trưa nhóm"
+                    lower.contains("ăn sáng") -> "Ăn sáng nhóm"
                     lower.contains("đi chợ") || lower.contains("siêu thị") -> "Đi siêu thị đồ dùng"
                     lower.contains("xăng") || lower.contains("xe") -> "Tiền xăng xe chung"
                     else -> "Khoản chi mới (${categoryName})"
+                }
+
+                val splitSummary = if (groupSummary != null && groupSummary.members.isNotEmpty()) {
+                    "Chia đều cho ${groupSummary.members.size} thành viên (${groupSummary.group.name})"
+                } else {
+                    "Chia đều cho cả nhóm"
                 }
 
                 ChatMessage(
@@ -504,7 +842,7 @@ class SpendTogetherViewModel(
                         category = category,
                         categoryName = categoryName,
                         payerName = payer,
-                        splitSummary = "Chia đều cho cả nhóm",
+                        splitSummary = splitSummary,
                         isConfirmed = false
                     )
                 )
@@ -512,45 +850,95 @@ class SpendTogetherViewModel(
 
             // Hỏi về tình hình quỹ / số dư
             lower.contains("quỹ") || lower.contains("tiền còn") || lower.contains("ngân sách") || lower.contains("tình hình") || lower.contains("sống sót") || lower.contains("báo cáo") -> {
-                val balanceStr = currentBudget.totalBalanceFormatted
-                val spentStr = currentBudget.spentAmountFormatted
-                val limitStr = currentBudget.monthlyLimitFormatted
-                val percent = if (currentBudget.monthlyLimit > 0) (currentBudget.spentAmount * 100 / currentBudget.monthlyLimit) else 0
+                if (groupSummary != null) {
+                    val balanceStr = FintechAlgorithm.formatVnd(groupSummary.availableBalance)
+                    val spentStr = FintechAlgorithm.formatVnd(groupSummary.totalSpent)
+                    val limitStr = FintechAlgorithm.formatVnd(groupSummary.monthlyLimit)
+                    val percent = if (groupSummary.monthlyLimit > 0L) {
+                        groupSummary.totalSpent * 100L / groupSummary.monthlyLimit
+                    } else 0L
 
-                ChatMessage(
-                    text = "📊 Báo cáo tài chính nhanh từ FinSprout:\n\n" +
-                            "• Số dư quỹ hiện tại: $balanceStr\n" +
-                            "• Đã chi trong tháng: $spentStr / $limitStr ($percent% hạn mức)\n" +
-                            "• Đánh giá: ${if (percent < 80) "Quỹ nhóm đang ở mức an toàn! Cả nhóm chi tiêu rất có kế hoạch. 🎉" else "Cảnh báo nhẹ: Đã chạm 80% hạn mức tháng, nhóm nên cân nhắc trước các buổi tiệc lớn nhé! ⚠️"}",
-                    isFromUser = false
-                )
+                    ChatMessage(
+                        text = "📊 Báo cáo tài chính nhanh từ FinSprout — ${groupSummary.group.name}:\n\n" +
+                                "• Quỹ đang hoạt động: ${groupSummary.group.name} (${groupSummary.members.size} thành viên)\n" +
+                                "• Số dư quỹ hiện tại: $balanceStr\n" +
+                                (if (groupSummary.totalIncome > 0L) "• Tổng thu / nạp quỹ: ${FintechAlgorithm.formatVnd(groupSummary.totalIncome)}\n" else "") +
+                                "• Đã chi trong tháng: $spentStr / $limitStr ($percent% hạn mức)\n" +
+                                "• Đánh giá: ${if (percent < 80) "Quỹ ${groupSummary.group.name} đang ở mức an toàn! Cả nhóm chi tiêu rất có kế hoạch. 🎉" else "Cảnh báo nhẹ: Quỹ ${groupSummary.group.name} đã chạm $percent% hạn mức tháng, nhóm nên cân nhắc trước các khoản chi lớn nhé! ⚠️"}",
+                        isFromUser = false
+                    )
+                } else {
+                    val balanceStr = currentBudget.totalBalanceFormatted
+                    val spentStr = currentBudget.spentAmountFormatted
+                    val limitStr = currentBudget.monthlyLimitFormatted
+                    val percent = if (currentBudget.monthlyLimit > 0) (currentBudget.spentAmount * 100 / currentBudget.monthlyLimit) else 0
+
+                    ChatMessage(
+                        text = "📊 Báo cáo tài chính nhanh từ FinSprout:\n\n" +
+                                "• Số dư quỹ hiện tại: $balanceStr\n" +
+                                "• Đã chi trong tháng: $spentStr / $limitStr ($percent% hạn mức)\n" +
+                                "• Đánh giá: ${if (percent < 80) "Quỹ nhóm đang ở mức an toàn! Cả nhóm chi tiêu rất có kế hoạch. 🎉" else "Cảnh báo nhẹ: Đã chạm 80% hạn mức tháng, nhóm nên cân nhắc trước các buổi tiệc lớn nhé! ⚠️"}",
+                        isFromUser = false
+                    )
+                }
             }
 
             // Nhắc nợ / đòi nợ
             lower.contains("nhắc nợ") || lower.contains("đòi nợ") || lower.contains("nhắc tiền") || lower.contains("nợ") -> {
-                val targetName = when {
-                    lower.contains("linh") -> "Linh"
-                    lower.contains("hùng") -> "Hùng"
-                    lower.contains("đạt") -> "Đạt"
-                    lower.contains("bình") -> "Bình"
-                    else -> "bạn"
-                }
+                if (groupSummary != null) {
+                    val mentionedMember = findMentionedMember(trimmed, groupSummary.members)
+                    val matchedTransfer = if (mentionedMember != null) {
+                        groupSummary.transfers.firstOrNull { it.fromUserId == mentionedMember.userId }
+                    } else {
+                        groupSummary.transfers.firstOrNull()
+                    }
+                    val targetName = mentionedMember?.displayName
+                        ?: matchedTransfer?.let { groupSummary.memberNamesById[it.fromUserId] }
+                        ?: "bạn"
+                    val debtAmountStr = matchedTransfer?.let { FintechAlgorithm.formatVnd(it.amount) }
+                        ?: "khoản chi gần nhất"
+                    val creditorHint = matchedTransfer?.let {
+                        groupSummary.memberNamesById[it.toUserId]
+                    }
+                    val recipientPhrase = if (creditorHint != null) "cho $creditorHint" else "vào quỹ ${groupSummary.group.name}"
 
-                val matchedDebt = repository.debts.value.find { !it.isPaid && it.debtorName.contains(targetName, ignoreCase = true) }
-                val debtAmountStr = matchedDebt?.amountFormatted ?: "khoản chi gần nhất"
+                    val reminderText = "Ting ting! 🧋 $targetName ơi, hôm trước nhóm ${groupSummary.group.name} có chi chung hoạt động. Phần chi phí của bạn là $debtAmountStr nè. Khi nào tiện bạn chuyển khoản $recipientPhrase để chốt sổ nhé! Cảm ơn bạn nhiều ❤️"
 
-                val reminderText = "Ting ting! 🧋 $targetName ơi, hôm trước nhóm mình chi chung hoạt động đồ án. Phần chi phí của bạn là $debtAmountStr nè. Khi nào tiện bạn chuyển khoản vào quỹ nhóm để thủ quỹ chốt sổ nhé! Cảm ơn bạn nhiều ❤️"
-
-                ChatMessage(
-                    text = "FinSprout đã soạn sẵn một mẫu nhắc nợ vừa dễ thương vừa tế nhị cho bạn này! Bạn có thể bấm sao chép để gửi ngay qua Zalo/Messenger nhé: 💌",
-                    isFromUser = false,
-                    reminderProposal = ChatReminderProposal(
-                        recipientName = targetName,
-                        amountFormatted = matchedDebt?.amountFormatted ?: "200.000 đ",
-                        suggestedMessage = reminderText,
-                        isCopied = false
+                    ChatMessage(
+                        text = "FinSprout đã soạn sẵn một mẫu nhắc nợ vừa dễ thương vừa tế nhị cho quỹ ${groupSummary.group.name}! Bạn có thể bấm sao chép để gửi ngay qua Zalo/Messenger nhé: 💌",
+                        isFromUser = false,
+                        reminderProposal = ChatReminderProposal(
+                            recipientName = targetName,
+                            amountFormatted = matchedTransfer?.let { FintechAlgorithm.formatVnd(it.amount) } ?: "0 đ",
+                            suggestedMessage = reminderText,
+                            isCopied = false
+                        )
                     )
-                )
+                } else {
+                    val targetName = when {
+                        lower.contains("linh") -> "Linh"
+                        lower.contains("hùng") -> "Hùng"
+                        lower.contains("đạt") -> "Đạt"
+                        lower.contains("bình") -> "Bình"
+                        else -> "bạn"
+                    }
+
+                    val matchedDebt = repository.debts.value.find { !it.isPaid && it.debtorName.contains(targetName, ignoreCase = true) }
+                    val debtAmountStr = matchedDebt?.amountFormatted ?: "khoản chi gần nhất"
+
+                    val reminderText = "Ting ting! 🧋 $targetName ơi, hôm trước nhóm mình chi chung hoạt động đồ án. Phần chi phí của bạn là $debtAmountStr nè. Khi nào tiện bạn chuyển khoản vào quỹ nhóm để thủ quỹ chốt sổ nhé! Cảm ơn bạn nhiều ❤️"
+
+                    ChatMessage(
+                        text = "FinSprout đã soạn sẵn một mẫu nhắc nợ vừa dễ thương vừa tế nhị cho bạn này! Bạn có thể bấm sao chép để gửi ngay qua Zalo/Messenger nhé: 💌",
+                        isFromUser = false,
+                        reminderProposal = ChatReminderProposal(
+                            recipientName = targetName,
+                            amountFormatted = matchedDebt?.amountFormatted ?: "200.000 đ",
+                            suggestedMessage = reminderText,
+                            isCopied = false
+                        )
+                    )
+                }
             }
 
             // Mẹo tiết kiệm
@@ -566,8 +954,9 @@ class SpendTogetherViewModel(
 
             // Mặc định
             else -> {
+                val scopeLabel = groupSummary?.group?.name ?: "nhóm"
                 ChatMessage(
-                    text = "FinSprout luôn sẵn sàng hỗ trợ! 🌱 Bạn có thể thử các gợi ý bên dưới như:\n" +
+                    text = "FinSprout luôn sẵn sàng hỗ trợ $scopeLabel! 🌱 Bạn có thể thử các gợi ý bên dưới như:\n" +
                             "• Nhắn 'Trưa nay ăn bún bò 180k Hùng trả' để ghi sổ tự động\n" +
                             "• Hỏi 'Tình hình quỹ tháng này' để xem số dư tức thì\n" +
                             "• Nhờ 'Viết tin nhắn nhắc nợ bạn Linh' để đòi tiền khéo léo!",
@@ -591,28 +980,148 @@ class SpendTogetherViewModel(
             }
         }
 
-        // Ghi trực tiếp vào Repository
+        // Ghi vào Legacy Repository để bảo toàn 100% tương thích với các màn hình & unit test hiện tại
         val allMemberIds = repository.members.value.map { it.id }
-        val payerMember = repository.members.value.find { it.name.contains(proposal.payerName, ignoreCase = true) }
-        val payerId = payerMember?.id ?: "1"
+        val legacyPayerMember = repository.members.value.find {
+            it.name.contains(proposal.payerName, ignoreCase = true)
+        }
+        val legacyPayerId = legacyPayerMember?.id ?: "1"
 
         repository.addExpenseAndSplit(
             title = proposal.title,
             amount = proposal.amount,
             category = proposal.category,
             note = "Ghi nhanh qua FinSprout AI",
-            payerId = payerId,
+            payerId = legacyPayerId,
             selectedMemberIds = allMemberIds,
             mode = SplitMode.EQUAL
         )
 
-        // Bot gửi thông báo thành công
-        _chatMessages.update { list ->
-            list + ChatMessage(
-                text = "🎉 Đã lưu thành công! Khoản chi ${proposal.title} (${proposal.amountFormatted}) đã được trừ vào quỹ và chia đều cho cả nhóm.",
-                isFromUser = false,
-                timestampFormatted = "Vừa xong"
-            )
+        val repo = _spendlyRepo.value
+        val activeGroupId = _activeGroupId.value?.takeIf { it.isNotBlank() }
+
+        if (repo != null && activeGroupId != null) {
+            viewModelScope.launch {
+                val snapshot = resolveActiveSnapshot()
+                val activeMembers = snapshot.members.filter { it.status == "ACTIVE" }
+                val groupName = snapshot.group?.name ?: uiState.value.activeGroupName
+
+                if (activeMembers.isEmpty()) {
+                    _chatMessages.update { list ->
+                        list + ChatMessage(
+                            text = "🎉 Đã lưu thành công! Khoản chi ${proposal.title} (${proposal.amountFormatted}) đã được trừ vào quỹ và chia đều cho cả nhóm.",
+                            isFromUser = false,
+                            timestampFormatted = "Vừa xong"
+                        )
+                    }
+                    return@launch
+                }
+
+                val payerMember = findMemberByName(proposal.payerName, activeMembers)
+                    ?: activeMembers.firstOrNull { it.userId == _activeUserUid.value }
+                    ?: activeMembers.firstOrNull { it.role == GroupRole.OWNER }
+                    ?: activeMembers.first()
+
+                val creatorMember = activeMembers.firstOrNull {
+                    it.userId == _activeUserUid.value && it.canAddExpense && it.role != GroupRole.VIEWER
+                } ?: activeMembers.firstOrNull {
+                    it.userId == payerMember.userId && it.canAddExpense && it.role != GroupRole.VIEWER
+                } ?: activeMembers.firstOrNull {
+                    it.canAddExpense && it.role != GroupRole.VIEWER
+                } ?: payerMember
+
+                val splitValidation = SplitCalculationEngine.calculateAndValidateSplit(
+                    totalAmount = proposal.amount,
+                    mode = EngineSplitMode.EQUAL,
+                    participants = activeMembers.map { member ->
+                        ParticipantInput(
+                            userId = member.userId,
+                            displayName = member.displayName,
+                            isIncluded = true
+                        )
+                    }
+                )
+
+                val participants = when (splitValidation) {
+                    is SplitValidationResult.Valid -> splitValidation.shares.map { share ->
+                        ExpenseParticipant(
+                            userId = share.userId,
+                            displayName = share.displayName,
+                            shareAmount = share.shareAmount,
+                            percentage = share.percentage
+                        )
+                    }
+                    is SplitValidationResult.Invalid -> {
+                        _chatMessages.update { list ->
+                            list.map { msg ->
+                                if (msg.id == messageId) {
+                                    msg.copy(expenseProposal = proposal.copy(isConfirmed = false))
+                                } else msg
+                            } + ChatMessage(
+                                text = "Không thể lưu khoản chi vào quỹ $groupName: ${splitValidation.errorMessage}",
+                                isFromUser = false,
+                                timestampFormatted = "Vừa xong"
+                            )
+                        }
+                        return@launch
+                    }
+                }
+
+                val now = System.currentTimeMillis()
+                val spendlyExpense = SpendlyExpense(
+                    groupId = activeGroupId,
+                    title = proposal.title,
+                    amount = proposal.amount,
+                    category = SpendlyCategory.fromLegacy(proposal.category),
+                    payerId = payerMember.userId,
+                    payerName = payerMember.displayName,
+                    createdBy = creatorMember.userId,
+                    splitType = SplitMethod.EQUAL,
+                    description = "Ghi nhanh qua FinSprout AI",
+                    expenseDateMillis = now,
+                    createdAtMillis = now,
+                    updatedAtMillis = now,
+                    status = RecordStatus.ACTIVE
+                )
+
+                val writeResult = repo.createExpenseWithParticipants(
+                    groupId = activeGroupId,
+                    expense = spendlyExpense,
+                    participants = participants
+                )
+
+                if (writeResult.isSuccess) {
+                    _chatMessages.update { list ->
+                        list + ChatMessage(
+                            text = "🎉 Đã lưu thành công vào quỹ $groupName! Khoản chi ${proposal.title} (${proposal.amountFormatted}) đã được trừ vào quỹ và chia đều cho ${participants.size} thành viên.",
+                            isFromUser = false,
+                            timestampFormatted = "Vừa xong"
+                        )
+                    }
+                } else {
+                    val errMsg = writeResult.exceptionOrNull()?.localizedMessage ?: "Lỗi không xác định"
+                    _chatMessages.update { list ->
+                        list.map { msg ->
+                            if (msg.id == messageId) {
+                                msg.copy(expenseProposal = proposal.copy(isConfirmed = false))
+                            } else msg
+                        } + ChatMessage(
+                            text = "Không thể lưu khoản chi lên Firestore cho quỹ $groupName: $errMsg",
+                            isFromUser = false,
+                            timestampFormatted = "Vừa xong"
+                        )
+                    }
+                }
+            }
+        } else {
+            // Bot gửi thông báo thành công
+            _chatMessages.update { list ->
+                list + ChatMessage(
+                    text = "🎉 Đã lưu thành công! Khoản chi ${proposal.title} (${proposal.amountFormatted}) đã được trừ vào quỹ và chia đều cho cả nhóm.",
+                    isFromUser = false,
+                    timestampFormatted = "Vừa xong"
+                )
+            }
         }
     }
 
@@ -624,5 +1133,55 @@ class SpendTogetherViewModel(
                 timestampFormatted = "Vừa xong"
             )
         )
+    }
+
+    // ==================== HELPER MATCHING THÀNH VIÊN ====================
+
+    private fun resolveActiveUserName(members: List<SpendlyGroupMember>): String {
+        val uid = _activeUserUid.value
+        if (!uid.isNullOrBlank()) {
+            members.firstOrNull { it.userId == uid }?.let { return it.displayName }
+        }
+        val profileName = uiState.value.userProfile.name
+        findMemberByName(profileName, members)?.let { return it.displayName }
+        return members.firstOrNull { it.role == GroupRole.OWNER }?.displayName
+            ?: members.firstOrNull()?.displayName
+            ?: profileName
+    }
+
+    private fun findMentionedMember(
+        text: String,
+        members: List<SpendlyGroupMember>
+    ): SpendlyGroupMember? {
+        if (members.isEmpty()) return null
+        val lower = text.lowercase()
+        val fullNameMatch = members
+            .filter { it.displayName.isNotBlank() }
+            .sortedByDescending { it.displayName.length }
+            .firstOrNull { lower.contains(it.displayName.lowercase()) }
+        if (fullNameMatch != null) return fullNameMatch
+
+        val wordTokens = lower.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }.toSet()
+        return members.firstOrNull { member ->
+            val shortName = member.displayName.trim()
+                .split(Regex("\\s+"))
+                .lastOrNull()
+                ?.lowercase()
+            !shortName.isNullOrBlank() && shortName in wordTokens
+        }
+    }
+
+    private fun findMemberByName(
+        name: String,
+        members: List<SpendlyGroupMember>
+    ): SpendlyGroupMember? {
+        if (name.isBlank() || members.isEmpty()) return null
+        val trimmed = name.trim()
+        return members.firstOrNull { it.displayName.equals(trimmed, ignoreCase = true) }
+            ?: members.firstOrNull {
+                it.displayName.contains(trimmed, ignoreCase = true) ||
+                    trimmed.contains(it.displayName, ignoreCase = true)
+            }
+            ?: findMentionedMember(trimmed, members)
     }
 }

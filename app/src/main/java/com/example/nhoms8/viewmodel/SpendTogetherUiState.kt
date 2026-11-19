@@ -48,5 +48,8 @@ data class SpendTogetherUiState(
             timestampFormatted = "Vừa xong"
         )
     ),
-    val isChatbotTyping: Boolean = false
+    val isChatbotTyping: Boolean = false,
+    val activeGroupId: String? = null,
+    val activeGroupName: String = "Quỹ Chi Tiêu Nhóm 08",
+    val unreadNotificationsCount: Int = 0
 )

@@ -1,19 +1,25 @@
 package com.example.nhoms8.data.firestore
 
+import com.example.nhoms8.algorithm.FintechAlgorithm
 import com.example.nhoms8.domain.model.ExpenseParticipant
 import com.example.nhoms8.domain.model.GroupActivity
 import com.example.nhoms8.domain.model.GroupRole
 import com.example.nhoms8.domain.model.MemberBalance
 import com.example.nhoms8.domain.model.RecordStatus
+import com.example.nhoms8.domain.model.SettlementStatus
+import com.example.nhoms8.domain.model.SpendlyBudget
 import com.example.nhoms8.domain.model.SpendlyCategory
 import com.example.nhoms8.domain.model.SpendlyExpense
 import com.example.nhoms8.domain.model.SpendlyGroup
 import com.example.nhoms8.domain.model.SpendlyGroupMember
 import com.example.nhoms8.domain.model.SpendlyIncome
 import com.example.nhoms8.domain.model.SpendlyNotification
+import com.example.nhoms8.domain.model.SpendlySettlement
 import com.example.nhoms8.domain.model.SpendlyUser
 import com.example.nhoms8.domain.model.SplitMethod
+import com.example.nhoms8.domain.repository.BudgetRepository
 import com.example.nhoms8.domain.repository.GroupRepository
+import com.example.nhoms8.domain.repository.SettlementRepository
 import com.example.nhoms8.domain.repository.TransactionRepository
 import com.example.nhoms8.domain.repository.UserRepository
 import com.google.firebase.firestore.CollectionReference
@@ -39,10 +45,11 @@ import java.security.SecureRandom
 import java.util.UUID
 
 /**
- * Triển khai hợp nhất UserRepository, GroupRepository và TransactionRepository cho Spendly.
+ * Triển khai hợp nhất UserRepository, GroupRepository, TransactionRepository,
+ * SettlementRepository và BudgetRepository cho Spendly.
  *
- * - Khi [firestore] != null: đọc/ghi thời gian thực qua Cloud Firestore với WriteBatch nguyên tử
- *   cho toàn bộ các thao tác sổ cái (expense + participants + balances + activities).
+ * - Khi [firestore] != null: đọc/ghi thời gian thực qua Cloud Firestore với WriteBatch/Transaction
+ *   nguyên tử cho toàn bộ các thao tác sổ cái (expense + participants + settlements + balances + budgets + activities).
  * - Khi [firestore] == null: sử dụng kho lưu trữ trạng thái trong bộ nhớ (In-Memory StateFlow)
  *   với cùng logic nghiệp vụ, phù hợp cho Unit Test, Compose Preview và chế độ offline fallback.
  */
@@ -53,7 +60,7 @@ class FirestoreSpendlyRepository(
         null
     },
     private val clock: () -> Long = { System.currentTimeMillis() }
-) : UserRepository, GroupRepository, TransactionRepository {
+) : UserRepository, GroupRepository, TransactionRepository, SettlementRepository, BudgetRepository {
 
     private data class InvitationRecord(
         val inviteCode: String,
@@ -70,6 +77,8 @@ class FirestoreSpendlyRepository(
         val expenses: Map<String, List<SpendlyExpense>> = emptyMap(),
         val participants: Map<String, Map<String, List<ExpenseParticipant>>> = emptyMap(),
         val incomes: Map<String, List<SpendlyIncome>> = emptyMap(),
+        val settlements: Map<String, List<SpendlySettlement>> = emptyMap(),
+        val budgets: Map<String, List<SpendlyBudget>> = emptyMap(),
         val balances: Map<String, Map<String, MemberBalance>> = emptyMap(),
         val activities: Map<String, List<GroupActivity>> = emptyMap(),
         val invitations: Map<String, InvitationRecord> = emptyMap()
@@ -1473,12 +1482,16 @@ class FirestoreSpendlyRepository(
 
                 val activeMemberIds = group.memberIds.toSet()
                 val existingBalanceIds = state.balances[groupId]?.keys.orEmpty()
+                val confirmedSettlements = state.settlements[groupId]
+                    .orEmpty()
+                    .filter { it.status == SettlementStatus.CONFIRMED }
                 val newBalances = computeBalances(
                     memberIds = activeMemberIds,
                     existingBalanceUserIds = existingBalanceIds,
                     expensesWithParticipants = updatedExpenses.map { exp ->
                         exp to currentParticipants[exp.expenseId].orEmpty()
                     },
+                    confirmedSettlements = confirmedSettlements,
                     now = now
                 )
 
@@ -1538,6 +1551,7 @@ class FirestoreSpendlyRepository(
 
             val existingActiveWithParts = fetchActiveExpensesWithParticipants(db, groupId)
                 .filterNot { it.first.expenseId == expenseId }
+            val confirmedSettlements = fetchConfirmedSettlements(db, groupId)
             val existingBalanceIds = groupCollection(db, groupId, SUBCOLLECTION_BALANCES)
                 .get()
                 .await()
@@ -1549,6 +1563,7 @@ class FirestoreSpendlyRepository(
                 memberIds = group.memberIds.toSet(),
                 existingBalanceUserIds = existingBalanceIds,
                 expensesWithParticipants = existingActiveWithParts + (savedExpense to participants),
+                confirmedSettlements = confirmedSettlements,
                 now = now
             )
 
@@ -1628,12 +1643,16 @@ class FirestoreSpendlyRepository(
                 }
                 val updatedParticipants = state.participants[groupId].orEmpty() + (expense.expenseId to participants)
 
+                val confirmedSettlements = state.settlements[groupId]
+                    .orEmpty()
+                    .filter { it.status == SettlementStatus.CONFIRMED }
                 val newBalances = computeBalances(
                     memberIds = group.memberIds.toSet(),
                     existingBalanceUserIds = state.balances[groupId]?.keys.orEmpty(),
                     expensesWithParticipants = updatedExpenses.map { exp ->
                         exp to updatedParticipants[exp.expenseId].orEmpty()
                     },
+                    confirmedSettlements = confirmedSettlements,
                     now = now
                 )
 
@@ -1697,6 +1716,7 @@ class FirestoreSpendlyRepository(
 
             val activeOthers = fetchActiveExpensesWithParticipants(db, groupId)
                 .filterNot { it.first.expenseId == expense.expenseId }
+            val confirmedSettlements = fetchConfirmedSettlements(db, groupId)
             val existingBalanceIds = groupCollection(db, groupId, SUBCOLLECTION_BALANCES)
                 .get()
                 .await()
@@ -1708,6 +1728,7 @@ class FirestoreSpendlyRepository(
                 memberIds = group.memberIds.toSet(),
                 existingBalanceUserIds = existingBalanceIds,
                 expensesWithParticipants = activeOthers + (updatedExpense to participants),
+                confirmedSettlements = confirmedSettlements,
                 now = now
             )
 
@@ -1777,12 +1798,16 @@ class FirestoreSpendlyRepository(
                     if (it.expenseId == expenseId) cancelled else it
                 }
                 val groupParticipants = state.participants[groupId].orEmpty()
+                val confirmedSettlements = state.settlements[groupId]
+                    .orEmpty()
+                    .filter { it.status == SettlementStatus.CONFIRMED }
                 val newBalances = computeBalances(
                     memberIds = group.memberIds.toSet(),
                     existingBalanceUserIds = state.balances[groupId]?.keys.orEmpty(),
                     expensesWithParticipants = updatedExpenses.map { exp ->
                         exp to groupParticipants[exp.expenseId].orEmpty()
                     },
+                    confirmedSettlements = confirmedSettlements,
                     now = now
                 )
                 val activity = GroupActivity(
@@ -1821,6 +1846,7 @@ class FirestoreSpendlyRepository(
 
             val remainingActive = fetchActiveExpensesWithParticipants(db, groupId)
                 .filterNot { it.first.expenseId == expenseId }
+            val confirmedSettlements = fetchConfirmedSettlements(db, groupId)
             val existingBalanceIds = groupCollection(db, groupId, SUBCOLLECTION_BALANCES)
                 .get()
                 .await()
@@ -1832,6 +1858,7 @@ class FirestoreSpendlyRepository(
                 memberIds = group.memberIds.toSet(),
                 existingBalanceUserIds = existingBalanceIds,
                 expensesWithParticipants = remainingActive,
+                confirmedSettlements = confirmedSettlements,
                 now = now
             )
 
@@ -2058,6 +2085,626 @@ class FirestoreSpendlyRepository(
         }
     }
 
+    // ==================== SETTLEMENT REPOSITORY ====================
+
+    override fun observeSettlements(groupId: String): Flow<List<SpendlySettlement>> {
+        val db = firestore ?: return memoryDb
+            .map { state ->
+                state.settlements[groupId]
+                    .orEmpty()
+                    .sortedByDescending { it.createdAtMillis }
+            }
+            .distinctUntilChanged()
+
+        return callbackFlow {
+            if (groupId.isBlank()) {
+                trySend(emptyList())
+                awaitClose { }
+                return@callbackFlow
+            }
+            val registration = groupCollection(db, groupId, SUBCOLLECTION_SETTLEMENTS)
+                .orderBy("createdAtMillis", Query.Direction.DESCENDING)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val items = snapshot?.documents
+                        ?.map { it.toSpendlySettlement(groupId) }
+                        ?.sortedByDescending { it.createdAtMillis }
+                        .orEmpty()
+                    trySend(items)
+                }
+            awaitClose { registration.remove() }
+        }
+    }
+
+    override suspend fun createSettlementRequest(
+        groupId: String,
+        settlement: SpendlySettlement
+    ): Result<SpendlySettlement> = runCatchingSuspend {
+        require(groupId.isNotBlank()) { "Mã nhóm không được để trống" }
+        validateSettlementRequest(settlement)
+        val now = clock()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val group = state.groups[groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+                val membersMap = state.members[groupId].orEmpty()
+                val settlementId = settlement.settlementId.ifBlank { newId("stl") }
+                val savedSettlement = buildPendingSettlement(
+                    groupId = groupId,
+                    settlementId = settlementId,
+                    settlement = settlement,
+                    membersMap = membersMap,
+                    now = now
+                )
+                val actorName = resolveActorName(
+                    actorId = savedSettlement.createdBy,
+                    fallbackName = savedSettlement.fromUserName,
+                    membersMap = membersMap
+                )
+                val activity = buildSettlementRequestActivity(
+                    activityId = newId("act"),
+                    groupId = groupId,
+                    actorName = actorName,
+                    settlement = savedSettlement,
+                    now = now
+                )
+                val notification = buildSettlementRequestNotification(
+                    notificationId = newId("notif"),
+                    group = group,
+                    settlement = savedSettlement,
+                    now = now
+                )
+
+                val currentSettlements = state.settlements[groupId].orEmpty()
+                    .filterNot { it.settlementId == settlementId }
+                val targetNotifs = state.notifications[savedSettlement.toUserId].orEmpty()
+
+                memoryDb.value = state.copy(
+                    settlements = state.settlements + (groupId to (listOf(savedSettlement) + currentSettlements)),
+                    activities = state.activities + (groupId to (listOf(activity) + state.activities[groupId].orEmpty())),
+                    notifications = state.notifications + (savedSettlement.toUserId to (listOf(notification) + targetNotifs))
+                )
+                savedSettlement
+            }
+        } else {
+            val groupSnap = db.collection(COLLECTION_GROUPS).document(groupId).get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+            }
+            val group = groupSnap.toSpendlyGroup()
+            val membersSnap = groupCollection(db, groupId, SUBCOLLECTION_MEMBERS).get().await()
+            val membersMap = membersSnap.documents.associate { it.id to it.toSpendlyGroupMember() }
+
+            val settlementsCol = groupCollection(db, groupId, SUBCOLLECTION_SETTLEMENTS)
+            val settlementRef = if (settlement.settlementId.isBlank()) {
+                settlementsCol.document()
+            } else {
+                settlementsCol.document(settlement.settlementId)
+            }
+            val savedSettlement = buildPendingSettlement(
+                groupId = groupId,
+                settlementId = settlementRef.id,
+                settlement = settlement,
+                membersMap = membersMap,
+                now = now
+            )
+            val actorName = resolveActorName(
+                actorId = savedSettlement.createdBy,
+                fallbackName = savedSettlement.fromUserName,
+                membersMap = membersMap
+            )
+            val activityId = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document().id
+            val activity = buildSettlementRequestActivity(
+                activityId = activityId,
+                groupId = groupId,
+                actorName = actorName,
+                settlement = savedSettlement,
+                now = now
+            )
+            val notifRef = db.collection(COLLECTION_USERS)
+                .document(savedSettlement.toUserId)
+                .collection(SUBCOLLECTION_NOTIFICATIONS)
+                .document()
+            val notification = buildSettlementRequestNotification(
+                notificationId = notifRef.id,
+                group = group,
+                settlement = savedSettlement,
+                now = now
+            )
+
+            val batch = db.batch()
+            batch.set(settlementRef, savedSettlement.toFirestoreMap())
+            batch.set(
+                groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document(activityId),
+                activity.toFirestoreMap()
+            )
+            batch.set(notifRef, notification.toFirestoreMap())
+            batch.commit().await()
+            savedSettlement
+        }
+    }
+
+    override suspend fun confirmSettlement(
+        groupId: String,
+        settlementId: String,
+        actorId: String,
+        actorName: String
+    ): Result<Unit> = runCatchingSuspend {
+        require(groupId.isNotBlank() && settlementId.isNotBlank()) {
+            "Mã nhóm và mã thanh toán không được để trống"
+        }
+        require(actorId.isNotBlank()) { "Mã người xác nhận không được để trống" }
+        val now = clock()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val group = state.groups[groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+                val membersMap = state.members[groupId].orEmpty()
+                val groupSettlements = state.settlements[groupId].orEmpty()
+                val existing = groupSettlements.firstOrNull { it.settlementId == settlementId }
+                    ?: throw NoSuchElementException("Không tìm thấy giao dịch thanh toán")
+
+                ensurePendingForConfirmation(existing.status)
+
+                val confirmed = existing.copy(
+                    status = SettlementStatus.CONFIRMED,
+                    confirmedAtMillis = now,
+                    confirmedBy = actorId
+                )
+                val updatedSettlements = groupSettlements.map {
+                    if (it.settlementId == settlementId) confirmed else it
+                }
+                val groupParticipants = state.participants[groupId].orEmpty()
+                val newBalances = computeBalances(
+                    memberIds = group.memberIds.toSet(),
+                    existingBalanceUserIds = state.balances[groupId]?.keys.orEmpty(),
+                    expensesWithParticipants = state.expenses[groupId].orEmpty().map { exp ->
+                        exp to groupParticipants[exp.expenseId].orEmpty()
+                    },
+                    confirmedSettlements = updatedSettlements.filter { it.status == SettlementStatus.CONFIRMED },
+                    now = now
+                )
+
+                val resolvedActorName = resolveActorName(actorId, actorName, membersMap)
+                val activity = buildSettlementConfirmActivity(
+                    activityId = newId("act"),
+                    groupId = groupId,
+                    actorId = actorId,
+                    actorName = resolvedActorName,
+                    settlement = confirmed,
+                    now = now
+                )
+                val updatedNotifications = if (confirmed.fromUserId.isNotBlank()) {
+                    val notification = buildSettlementConfirmNotification(
+                        notificationId = newId("notif"),
+                        group = group,
+                        actorName = resolvedActorName,
+                        settlement = confirmed,
+                        now = now
+                    )
+                    val fromNotifs = state.notifications[confirmed.fromUserId].orEmpty()
+                    state.notifications + (confirmed.fromUserId to (listOf(notification) + fromNotifs))
+                } else {
+                    state.notifications
+                }
+
+                memoryDb.value = state.copy(
+                    settlements = state.settlements + (groupId to updatedSettlements),
+                    balances = state.balances + (groupId to newBalances),
+                    activities = state.activities + (groupId to (listOf(activity) + state.activities[groupId].orEmpty())),
+                    notifications = updatedNotifications
+                )
+            }
+        } else {
+            val groupSnap = db.collection(COLLECTION_GROUPS).document(groupId).get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+            }
+            val group = groupSnap.toSpendlyGroup()
+
+            lateinit var membersMap: Map<String, SpendlyGroupMember>
+            lateinit var activeExpenses: List<Pair<SpendlyExpense, List<ExpenseParticipant>>>
+            lateinit var existingBalanceIds: Set<String>
+            lateinit var otherConfirmedSettlements: List<SpendlySettlement>
+            coroutineScope {
+                val membersDef = async { groupCollection(db, groupId, SUBCOLLECTION_MEMBERS).get().await() }
+                val expensesDef = async { fetchActiveExpensesWithParticipants(db, groupId) }
+                val balancesDef = async { groupCollection(db, groupId, SUBCOLLECTION_BALANCES).get().await() }
+                val settlementsDef = async { fetchConfirmedSettlements(db, groupId) }
+                membersMap = membersDef.await().documents.associate { it.id to it.toSpendlyGroupMember() }
+                activeExpenses = expensesDef.await()
+                existingBalanceIds = balancesDef.await().documents.map { it.id }.toSet()
+                otherConfirmedSettlements = settlementsDef.await().filter { it.settlementId != settlementId }
+            }
+
+            val settlementRef = groupCollection(db, groupId, SUBCOLLECTION_SETTLEMENTS).document(settlementId)
+            val resolvedActorName = resolveActorName(actorId, actorName, membersMap)
+            val activityRef = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document()
+            val balancesCol = groupCollection(db, groupId, SUBCOLLECTION_BALANCES)
+
+            db.runTransaction { transaction ->
+                val snap = transaction.get(settlementRef)
+                if (!snap.exists()) {
+                    throw NoSuchElementException("Không tìm thấy giao dịch thanh toán")
+                }
+                val existing = snap.toSpendlySettlement(groupId)
+                ensurePendingForConfirmation(existing.status)
+
+                val confirmed = existing.copy(
+                    status = SettlementStatus.CONFIRMED,
+                    confirmedAtMillis = now,
+                    confirmedBy = actorId
+                )
+                val newBalances = computeBalances(
+                    memberIds = group.memberIds.toSet(),
+                    existingBalanceUserIds = existingBalanceIds,
+                    expensesWithParticipants = activeExpenses,
+                    confirmedSettlements = otherConfirmedSettlements + confirmed,
+                    now = now
+                )
+                val activity = buildSettlementConfirmActivity(
+                    activityId = activityRef.id,
+                    groupId = groupId,
+                    actorId = actorId,
+                    actorName = resolvedActorName,
+                    settlement = confirmed,
+                    now = now
+                )
+
+                transaction.update(
+                    settlementRef,
+                    mapOf(
+                        "status" to SettlementStatus.CONFIRMED.name,
+                        "confirmedAtMillis" to now,
+                        "confirmedBy" to actorId
+                    )
+                )
+                newBalances.forEach { (userId, balance) ->
+                    transaction.set(balancesCol.document(userId), balance.toFirestoreMap())
+                }
+                transaction.set(activityRef, activity.toFirestoreMap())
+                if (confirmed.fromUserId.isNotBlank()) {
+                    val notifRef = db.collection(COLLECTION_USERS)
+                        .document(confirmed.fromUserId)
+                        .collection(SUBCOLLECTION_NOTIFICATIONS)
+                        .document()
+                    val notification = buildSettlementConfirmNotification(
+                        notificationId = notifRef.id,
+                        group = group,
+                        actorName = resolvedActorName,
+                        settlement = confirmed,
+                        now = now
+                    )
+                    transaction.set(notifRef, notification.toFirestoreMap())
+                }
+            }.await()
+        }
+    }
+
+    override suspend fun rejectSettlement(
+        groupId: String,
+        settlementId: String,
+        actorId: String,
+        actorName: String,
+        reason: String
+    ): Result<Unit> = runCatchingSuspend {
+        require(groupId.isNotBlank() && settlementId.isNotBlank()) {
+            "Mã nhóm và mã thanh toán không được để trống"
+        }
+        require(actorId.isNotBlank()) { "Mã người từ chối không được để trống" }
+        val now = clock()
+        val trimmedReason = reason.trim()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val group = state.groups[groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+                val membersMap = state.members[groupId].orEmpty()
+                val groupSettlements = state.settlements[groupId].orEmpty()
+                val existing = groupSettlements.firstOrNull { it.settlementId == settlementId }
+                    ?: throw NoSuchElementException("Không tìm thấy giao dịch thanh toán")
+
+                ensurePendingForRejection(existing.status)
+
+                val rejected = existing.copy(status = SettlementStatus.REJECTED)
+                val updatedSettlements = groupSettlements.map {
+                    if (it.settlementId == settlementId) rejected else it
+                }
+                val resolvedActorName = resolveActorName(actorId, actorName, membersMap)
+                val activity = buildSettlementRejectActivity(
+                    activityId = newId("act"),
+                    groupId = groupId,
+                    actorId = actorId,
+                    actorName = resolvedActorName,
+                    settlement = rejected,
+                    reason = trimmedReason,
+                    now = now
+                )
+                val updatedNotifications = if (rejected.fromUserId.isNotBlank()) {
+                    val notification = buildSettlementRejectNotification(
+                        notificationId = newId("notif"),
+                        group = group,
+                        actorName = resolvedActorName,
+                        settlement = rejected,
+                        reason = trimmedReason,
+                        now = now
+                    )
+                    val fromNotifs = state.notifications[rejected.fromUserId].orEmpty()
+                    state.notifications + (rejected.fromUserId to (listOf(notification) + fromNotifs))
+                } else {
+                    state.notifications
+                }
+
+                memoryDb.value = state.copy(
+                    settlements = state.settlements + (groupId to updatedSettlements),
+                    activities = state.activities + (groupId to (listOf(activity) + state.activities[groupId].orEmpty())),
+                    notifications = updatedNotifications
+                )
+            }
+        } else {
+            val groupSnap = db.collection(COLLECTION_GROUPS).document(groupId).get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+            }
+            val group = groupSnap.toSpendlyGroup()
+            val membersSnap = groupCollection(db, groupId, SUBCOLLECTION_MEMBERS).get().await()
+            val membersMap = membersSnap.documents.associate { it.id to it.toSpendlyGroupMember() }
+            val resolvedActorName = resolveActorName(actorId, actorName, membersMap)
+
+            val settlementRef = groupCollection(db, groupId, SUBCOLLECTION_SETTLEMENTS).document(settlementId)
+            val activityRef = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document()
+
+            db.runTransaction { transaction ->
+                val snap = transaction.get(settlementRef)
+                if (!snap.exists()) {
+                    throw NoSuchElementException("Không tìm thấy giao dịch thanh toán")
+                }
+                val existing = snap.toSpendlySettlement(groupId)
+                ensurePendingForRejection(existing.status)
+
+                val activity = buildSettlementRejectActivity(
+                    activityId = activityRef.id,
+                    groupId = groupId,
+                    actorId = actorId,
+                    actorName = resolvedActorName,
+                    settlement = existing,
+                    reason = trimmedReason,
+                    now = now
+                )
+                transaction.update(settlementRef, "status", SettlementStatus.REJECTED.name)
+                transaction.set(activityRef, activity.toFirestoreMap())
+                if (existing.fromUserId.isNotBlank()) {
+                    val notifRef = db.collection(COLLECTION_USERS)
+                        .document(existing.fromUserId)
+                        .collection(SUBCOLLECTION_NOTIFICATIONS)
+                        .document()
+                    val notification = buildSettlementRejectNotification(
+                        notificationId = notifRef.id,
+                        group = group,
+                        actorName = resolvedActorName,
+                        settlement = existing,
+                        reason = trimmedReason,
+                        now = now
+                    )
+                    transaction.set(notifRef, notification.toFirestoreMap())
+                }
+            }.await()
+        }
+    }
+
+    // ==================== BUDGET REPOSITORY ====================
+
+    override fun observeBudgets(groupId: String): Flow<List<SpendlyBudget>> {
+        val db = firestore ?: return memoryDb
+            .map { state ->
+                state.budgets[groupId]
+                    .orEmpty()
+                    .sortedByDescending { it.updatedAtMillis }
+            }
+            .distinctUntilChanged()
+
+        return callbackFlow {
+            if (groupId.isBlank()) {
+                trySend(emptyList())
+                awaitClose { }
+                return@callbackFlow
+            }
+            val registration = groupCollection(db, groupId, SUBCOLLECTION_BUDGETS)
+                .orderBy("updatedAtMillis", Query.Direction.DESCENDING)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val items = snapshot?.documents
+                        ?.map { it.toSpendlyBudget(groupId) }
+                        ?.sortedByDescending { it.updatedAtMillis }
+                        .orEmpty()
+                    trySend(items)
+                }
+            awaitClose { registration.remove() }
+        }
+    }
+
+    override suspend fun upsertBudget(
+        groupId: String,
+        budget: SpendlyBudget
+    ): Result<SpendlyBudget> = runCatchingSuspend {
+        require(groupId.isNotBlank()) { "Mã nhóm không được để trống" }
+        validateBudgetInput(budget)
+        val now = clock()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val group = state.groups[groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+                val membersMap = state.members[groupId].orEmpty()
+                val budgetId = budget.budgetId.ifBlank { newId("bdg") }
+                val savedBudget = normalizeBudget(
+                    groupId = groupId,
+                    budgetId = budgetId,
+                    budget = budget,
+                    fallbackOwnerId = group.ownerId,
+                    now = now
+                )
+                val actorName = resolveActorName(savedBudget.createdBy, "Thành viên", membersMap)
+                val activity = buildUpsertBudgetActivity(
+                    activityId = newId("act"),
+                    groupId = groupId,
+                    actorName = actorName,
+                    budget = savedBudget,
+                    now = now
+                )
+
+                val currentBudgets = state.budgets[groupId].orEmpty()
+                    .filterNot { it.budgetId == budgetId }
+                val updatedGroups = if (savedBudget.category == null && savedBudget.isActive) {
+                    state.groups + (groupId to group.copy(monthlyBudgetLimit = savedBudget.limitAmount))
+                } else {
+                    state.groups
+                }
+
+                memoryDb.value = state.copy(
+                    groups = updatedGroups,
+                    budgets = state.budgets + (groupId to (listOf(savedBudget) + currentBudgets)),
+                    activities = state.activities + (groupId to (listOf(activity) + state.activities[groupId].orEmpty()))
+                )
+                savedBudget
+            }
+        } else {
+            val groupRef = db.collection(COLLECTION_GROUPS).document(groupId)
+            val groupSnap = groupRef.get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+            }
+            val group = groupSnap.toSpendlyGroup()
+            val membersSnap = groupCollection(db, groupId, SUBCOLLECTION_MEMBERS).get().await()
+            val membersMap = membersSnap.documents.associate { it.id to it.toSpendlyGroupMember() }
+
+            val budgetsCol = groupCollection(db, groupId, SUBCOLLECTION_BUDGETS)
+            val budgetRef = if (budget.budgetId.isBlank()) {
+                budgetsCol.document()
+            } else {
+                budgetsCol.document(budget.budgetId)
+            }
+            val savedBudget = normalizeBudget(
+                groupId = groupId,
+                budgetId = budgetRef.id,
+                budget = budget,
+                fallbackOwnerId = group.ownerId,
+                now = now
+            )
+            val actorName = resolveActorName(savedBudget.createdBy, "Thành viên", membersMap)
+            val activityId = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document().id
+            val activity = buildUpsertBudgetActivity(
+                activityId = activityId,
+                groupId = groupId,
+                actorName = actorName,
+                budget = savedBudget,
+                now = now
+            )
+
+            val batch = db.batch()
+            batch.set(budgetRef, savedBudget.toFirestoreMap())
+            if (savedBudget.category == null && savedBudget.isActive) {
+                batch.update(groupRef, "monthlyBudgetLimit", savedBudget.limitAmount)
+            }
+            batch.set(
+                groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document(activityId),
+                activity.toFirestoreMap()
+            )
+            batch.commit().await()
+            savedBudget
+        }
+    }
+
+    override suspend fun deleteBudget(
+        groupId: String,
+        budgetId: String
+    ): Result<Unit> = runCatchingSuspend {
+        require(groupId.isNotBlank() && budgetId.isNotBlank()) {
+            "Mã nhóm và mã ngân sách không được để trống"
+        }
+        val now = clock()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val group = state.groups[groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+                val membersMap = state.members[groupId].orEmpty()
+                val currentBudgets = state.budgets[groupId].orEmpty()
+                val existing = currentBudgets.firstOrNull { it.budgetId == budgetId }
+                    ?: throw NoSuchElementException("Không tìm thấy ngân sách")
+                val actorId = existing.createdBy.ifBlank { group.ownerId }
+                val actorName = resolveActorName(actorId, "Thành viên", membersMap)
+                val activity = GroupActivity(
+                    activityId = newId("act"),
+                    groupId = groupId,
+                    actorId = actorId,
+                    actorName = actorName,
+                    action = ACTION_DELETE_BUDGET,
+                    targetId = budgetId,
+                    description = "$actorName đã xóa ngân sách ${existing.name}",
+                    createdAtMillis = now
+                )
+                memoryDb.value = state.copy(
+                    budgets = state.budgets + (groupId to currentBudgets.filterNot { it.budgetId == budgetId }),
+                    activities = state.activities + (groupId to (listOf(activity) + state.activities[groupId].orEmpty()))
+                )
+            }
+        } else {
+            val groupSnap = db.collection(COLLECTION_GROUPS).document(groupId).get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm chi tiêu")
+            }
+            val group = groupSnap.toSpendlyGroup()
+            val budgetRef = groupCollection(db, groupId, SUBCOLLECTION_BUDGETS).document(budgetId)
+            val budgetSnap = budgetRef.get().await()
+            if (!budgetSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy ngân sách")
+            }
+            val existing = budgetSnap.toSpendlyBudget(groupId)
+            val membersSnap = groupCollection(db, groupId, SUBCOLLECTION_MEMBERS).get().await()
+            val membersMap = membersSnap.documents.associate { it.id to it.toSpendlyGroupMember() }
+            val actorId = existing.createdBy.ifBlank { group.ownerId }
+            val actorName = resolveActorName(actorId, "Thành viên", membersMap)
+            val activityId = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document().id
+            val activity = GroupActivity(
+                activityId = activityId,
+                groupId = groupId,
+                actorId = actorId,
+                actorName = actorName,
+                action = ACTION_DELETE_BUDGET,
+                targetId = budgetId,
+                description = "$actorName đã xóa ngân sách ${existing.name}",
+                createdAtMillis = now
+            )
+
+            val batch = db.batch()
+            batch.delete(budgetRef)
+            batch.set(
+                groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document(activityId),
+                activity.toFirestoreMap()
+            )
+            batch.commit().await()
+        }
+    }
+
     // ==================== PRIVATE HELPERS ====================
 
     private suspend inline fun <T> runCatchingSuspend(crossinline block: suspend () -> T): Result<T> {
@@ -2098,6 +2745,241 @@ class FirestoreSpendlyRepository(
             }
         }.awaitAll()
     }
+
+    private suspend fun fetchConfirmedSettlements(
+        db: FirebaseFirestore,
+        groupId: String
+    ): List<SpendlySettlement> {
+        val snap = groupCollection(db, groupId, SUBCOLLECTION_SETTLEMENTS)
+            .whereEqualTo("status", SettlementStatus.CONFIRMED.name)
+            .get()
+            .await()
+        return snap.documents.map { it.toSpendlySettlement(groupId) }
+    }
+
+    private fun validateSettlementRequest(settlement: SpendlySettlement) {
+        require(settlement.fromUserId.isNotBlank()) { "Người trả nợ không được để trống" }
+        require(settlement.toUserId.isNotBlank()) { "Người nhận thanh toán không được để trống" }
+        require(settlement.fromUserId != settlement.toUserId) {
+            "Người trả và người nhận không thể trùng nhau"
+        }
+        require(settlement.amount > 0L) { "Số tiền thanh toán phải lớn hơn 0" }
+    }
+
+    private fun ensurePendingForConfirmation(status: SettlementStatus) {
+        when (status) {
+            SettlementStatus.CONFIRMED ->
+                throw IllegalStateException("Giao dịch thanh toán này đã được xác nhận trước đó")
+            SettlementStatus.REJECTED ->
+                throw IllegalStateException("Giao dịch thanh toán này đã bị từ chối")
+            SettlementStatus.PENDING -> Unit
+        }
+    }
+
+    private fun ensurePendingForRejection(status: SettlementStatus) {
+        when (status) {
+            SettlementStatus.CONFIRMED ->
+                throw IllegalStateException("Không thể từ chối giao dịch đã được xác nhận")
+            SettlementStatus.REJECTED ->
+                throw IllegalStateException("Giao dịch thanh toán này đã bị từ chối trước đó")
+            SettlementStatus.PENDING -> Unit
+        }
+    }
+
+    private fun validateBudgetInput(budget: SpendlyBudget) {
+        require(budget.limitAmount > 0L) { "Hạn mức ngân sách phải lớn hơn 0" }
+        if (budget.startDateMillis > 0L && budget.endDateMillis > 0L) {
+            require(budget.endDateMillis >= budget.startDateMillis) {
+                "Ngày kết thúc phải sau ngày bắt đầu"
+            }
+        }
+    }
+
+    private fun resolveActorName(
+        actorId: String,
+        fallbackName: String,
+        membersMap: Map<String, SpendlyGroupMember>
+    ): String {
+        return fallbackName.trim()
+            .ifBlank { membersMap[actorId]?.displayName.orEmpty() }
+            .ifBlank { actorId }
+    }
+
+    private fun buildPendingSettlement(
+        groupId: String,
+        settlementId: String,
+        settlement: SpendlySettlement,
+        membersMap: Map<String, SpendlyGroupMember>,
+        now: Long
+    ): SpendlySettlement {
+        val fromName = settlement.fromUserName.trim().ifBlank {
+            membersMap[settlement.fromUserId]?.displayName ?: settlement.fromUserId
+        }
+        val toName = settlement.toUserName.trim().ifBlank {
+            membersMap[settlement.toUserId]?.displayName ?: settlement.toUserId
+        }
+        val createdBy = settlement.createdBy.trim().ifBlank { settlement.fromUserId }
+        return settlement.copy(
+            settlementId = settlementId,
+            groupId = groupId,
+            fromUserName = fromName,
+            toUserName = toName,
+            status = SettlementStatus.PENDING,
+            note = settlement.note.trim(),
+            bankInfo = settlement.bankInfo.trim(),
+            createdBy = createdBy,
+            createdAtMillis = if (settlement.createdAtMillis > 0L) settlement.createdAtMillis else now,
+            confirmedAtMillis = null,
+            confirmedBy = null
+        )
+    }
+
+    private fun buildSettlementRequestActivity(
+        activityId: String,
+        groupId: String,
+        actorName: String,
+        settlement: SpendlySettlement,
+        now: Long
+    ): GroupActivity = GroupActivity(
+        activityId = activityId,
+        groupId = groupId,
+        actorId = settlement.createdBy,
+        actorName = actorName,
+        action = ACTION_REQUEST_SETTLEMENT,
+        targetId = settlement.settlementId,
+        description = "${settlement.fromUserName} đã gửi yêu cầu thanh toán ${FintechAlgorithm.formatVnd(settlement.amount)} cho ${settlement.toUserName}",
+        createdAtMillis = now
+    )
+
+    private fun buildSettlementRequestNotification(
+        notificationId: String,
+        group: SpendlyGroup,
+        settlement: SpendlySettlement,
+        now: Long
+    ): SpendlyNotification = SpendlyNotification(
+        id = notificationId,
+        title = "Yêu cầu xác nhận thanh toán",
+        body = "${settlement.fromUserName} đã gửi yêu cầu thanh toán ${FintechAlgorithm.formatVnd(settlement.amount)} trong nhóm ${group.name}",
+        type = "SETTLEMENT_REQUEST",
+        groupId = group.groupId,
+        isRead = false,
+        createdAtMillis = now
+    )
+
+    private fun buildSettlementConfirmActivity(
+        activityId: String,
+        groupId: String,
+        actorId: String,
+        actorName: String,
+        settlement: SpendlySettlement,
+        now: Long
+    ): GroupActivity = GroupActivity(
+        activityId = activityId,
+        groupId = groupId,
+        actorId = actorId,
+        actorName = actorName,
+        action = ACTION_CONFIRM_SETTLEMENT,
+        targetId = settlement.settlementId,
+        description = "$actorName đã xác nhận khoản thanh toán ${FintechAlgorithm.formatVnd(settlement.amount)} từ ${settlement.fromUserName}",
+        createdAtMillis = now
+    )
+
+    private fun buildSettlementConfirmNotification(
+        notificationId: String,
+        group: SpendlyGroup,
+        actorName: String,
+        settlement: SpendlySettlement,
+        now: Long
+    ): SpendlyNotification = SpendlyNotification(
+        id = notificationId,
+        title = "Thanh toán đã được xác nhận",
+        body = "$actorName đã xác nhận nhận ${FintechAlgorithm.formatVnd(settlement.amount)} trong nhóm ${group.name}",
+        type = "SETTLEMENT_CONFIRMED",
+        groupId = group.groupId,
+        isRead = false,
+        createdAtMillis = now
+    )
+
+    private fun buildSettlementRejectActivity(
+        activityId: String,
+        groupId: String,
+        actorId: String,
+        actorName: String,
+        settlement: SpendlySettlement,
+        reason: String,
+        now: Long
+    ): GroupActivity {
+        val reasonSuffix = if (reason.isNotBlank()) " ($reason)" else ""
+        return GroupActivity(
+            activityId = activityId,
+            groupId = groupId,
+            actorId = actorId,
+            actorName = actorName,
+            action = ACTION_REJECT_SETTLEMENT,
+            targetId = settlement.settlementId,
+            description = "$actorName đã từ chối khoản thanh toán ${FintechAlgorithm.formatVnd(settlement.amount)}$reasonSuffix",
+            createdAtMillis = now
+        )
+    }
+
+    private fun buildSettlementRejectNotification(
+        notificationId: String,
+        group: SpendlyGroup,
+        actorName: String,
+        settlement: SpendlySettlement,
+        reason: String,
+        now: Long
+    ): SpendlyNotification {
+        val reasonSuffix = if (reason.isNotBlank()) ": $reason" else ""
+        return SpendlyNotification(
+            id = notificationId,
+            title = "Thanh toán bị từ chối",
+            body = "$actorName đã từ chối khoản thanh toán ${FintechAlgorithm.formatVnd(settlement.amount)} trong nhóm ${group.name}$reasonSuffix",
+            type = "SETTLEMENT_REJECTED",
+            groupId = group.groupId,
+            isRead = false,
+            createdAtMillis = now
+        )
+    }
+
+    private fun normalizeBudget(
+        groupId: String,
+        budgetId: String,
+        budget: SpendlyBudget,
+        fallbackOwnerId: String,
+        now: Long
+    ): SpendlyBudget {
+        val resolvedName = budget.name.trim().ifBlank {
+            budget.category?.let { "Ngân sách ${it.label}" } ?: "Ngân sách tháng nhóm"
+        }
+        val resolvedPeriod = budget.period.trim().ifBlank { "MONTHLY" }
+        val resolvedCreator = budget.createdBy.trim().ifBlank { fallbackOwnerId }
+        return budget.copy(
+            budgetId = budgetId,
+            groupId = groupId,
+            name = resolvedName,
+            period = resolvedPeriod,
+            createdBy = resolvedCreator,
+            updatedAtMillis = now
+        )
+    }
+
+    private fun buildUpsertBudgetActivity(
+        activityId: String,
+        groupId: String,
+        actorName: String,
+        budget: SpendlyBudget,
+        now: Long
+    ): GroupActivity = GroupActivity(
+        activityId = activityId,
+        groupId = groupId,
+        actorId = budget.createdBy,
+        actorName = actorName,
+        action = ACTION_UPSERT_BUDGET,
+        targetId = budget.budgetId,
+        description = "$actorName đã thiết lập ngân sách ${budget.name} (${FintechAlgorithm.formatVnd(budget.limitAmount)})",
+        createdAtMillis = now
+    )
 
     private fun validateRoleChange(
         group: SpendlyGroup,
@@ -2148,6 +3030,7 @@ class FirestoreSpendlyRepository(
         memberIds: Set<String>,
         existingBalanceUserIds: Set<String>,
         expensesWithParticipants: List<Pair<SpendlyExpense, List<ExpenseParticipant>>>,
+        confirmedSettlements: List<SpendlySettlement> = emptyList(),
         now: Long
     ): Map<String, MemberBalance> {
         val allUserIds = linkedSetOf<String>()
@@ -2180,6 +3063,20 @@ class FirestoreSpendlyRepository(
                 shareByUser[participant.userId] =
                     (shareByUser[participant.userId] ?: 0L) + participant.shareAmount
             }
+        }
+
+        confirmedSettlements.forEach { settlement ->
+            if (settlement.status != SettlementStatus.CONFIRMED || settlement.amount <= 0L) return@forEach
+            if (settlement.fromUserId.isBlank() || settlement.toUserId.isBlank()) return@forEach
+            if (settlement.fromUserId == settlement.toUserId) return@forEach
+
+            allUserIds.add(settlement.fromUserId)
+            allUserIds.add(settlement.toUserId)
+
+            paidByUser[settlement.fromUserId] =
+                (paidByUser[settlement.fromUserId] ?: 0L) + settlement.amount
+            shareByUser[settlement.toUserId] =
+                (shareByUser[settlement.toUserId] ?: 0L) + settlement.amount
         }
 
         return allUserIds.associateWith { userId ->
@@ -2462,6 +3359,71 @@ class FirestoreSpendlyRepository(
         createdAtMillis = longValue("createdAtMillis")
     )
 
+    private fun SpendlySettlement.toFirestoreMap(): Map<String, Any?> = mapOf(
+        "settlementId" to settlementId,
+        "groupId" to groupId,
+        "fromUserId" to fromUserId,
+        "fromUserName" to fromUserName,
+        "toUserId" to toUserId,
+        "toUserName" to toUserName,
+        "amount" to amount,
+        "status" to status.name,
+        "note" to note,
+        "bankInfo" to bankInfo,
+        "createdBy" to createdBy,
+        "createdAtMillis" to createdAtMillis,
+        "confirmedAtMillis" to confirmedAtMillis,
+        "confirmedBy" to confirmedBy
+    )
+
+    private fun DocumentSnapshot.toSpendlySettlement(fallbackGroupId: String): SpendlySettlement = SpendlySettlement(
+        settlementId = getString("settlementId").orEmpty().ifBlank { id },
+        groupId = getString("groupId").orEmpty().ifBlank { fallbackGroupId },
+        fromUserId = getString("fromUserId").orEmpty(),
+        fromUserName = getString("fromUserName").orEmpty(),
+        toUserId = getString("toUserId").orEmpty(),
+        toUserName = getString("toUserName").orEmpty(),
+        amount = longValue("amount"),
+        status = SettlementStatus.fromRaw(getString("status")),
+        note = getString("note").orEmpty(),
+        bankInfo = getString("bankInfo").orEmpty(),
+        createdBy = getString("createdBy").orEmpty(),
+        createdAtMillis = longValue("createdAtMillis"),
+        confirmedAtMillis = (get("confirmedAtMillis") as? Number)?.toLong(),
+        confirmedBy = getString("confirmedBy")
+    )
+
+    private fun SpendlyBudget.toFirestoreMap(): Map<String, Any?> = mapOf(
+        "budgetId" to budgetId,
+        "groupId" to groupId,
+        "name" to name,
+        "limitAmount" to limitAmount,
+        "period" to period,
+        "startDateMillis" to startDateMillis,
+        "endDateMillis" to endDateMillis,
+        "category" to category?.name,
+        "isActive" to isActive,
+        "createdBy" to createdBy,
+        "updatedAtMillis" to updatedAtMillis
+    )
+
+    private fun DocumentSnapshot.toSpendlyBudget(fallbackGroupId: String): SpendlyBudget {
+        val rawCategory = getString("category")?.takeIf { it.isNotBlank() }
+        return SpendlyBudget(
+            budgetId = getString("budgetId").orEmpty().ifBlank { id },
+            groupId = getString("groupId").orEmpty().ifBlank { fallbackGroupId },
+            name = getString("name").orEmpty(),
+            limitAmount = longValue("limitAmount"),
+            period = getString("period").orEmpty().ifBlank { "MONTHLY" },
+            startDateMillis = longValue("startDateMillis"),
+            endDateMillis = longValue("endDateMillis"),
+            category = rawCategory?.let { SpendlyCategory.fromRaw(it) },
+            isActive = getBoolean("isActive") ?: true,
+            createdBy = getString("createdBy").orEmpty(),
+            updatedAtMillis = longValue("updatedAtMillis")
+        )
+    }
+
     private fun DocumentSnapshot.longValue(key: String, default: Long = 0L): Long {
         return (get(key) as? Number)?.toLong() ?: default
     }
@@ -2484,6 +3446,8 @@ class FirestoreSpendlyRepository(
         private const val SUBCOLLECTION_EXPENSES = "expenses"
         private const val SUBCOLLECTION_PARTICIPANTS = "participants"
         private const val SUBCOLLECTION_INCOMES = "incomes"
+        private const val SUBCOLLECTION_SETTLEMENTS = "settlements"
+        private const val SUBCOLLECTION_BUDGETS = "budgets"
         private const val SUBCOLLECTION_ACTIVITIES = "activities"
         private const val SUBCOLLECTION_BALANCES = "balances"
 
@@ -2505,6 +3469,11 @@ class FirestoreSpendlyRepository(
         const val ACTION_CANCEL_EXPENSE = "CANCEL_EXPENSE"
         const val ACTION_CREATE_INCOME = "CREATE_INCOME"
         const val ACTION_CANCEL_INCOME = "CANCEL_INCOME"
+        const val ACTION_REQUEST_SETTLEMENT = "REQUEST_SETTLEMENT"
+        const val ACTION_CONFIRM_SETTLEMENT = "CONFIRM_SETTLEMENT"
+        const val ACTION_REJECT_SETTLEMENT = "REJECT_SETTLEMENT"
+        const val ACTION_UPSERT_BUDGET = "UPSERT_BUDGET"
+        const val ACTION_DELETE_BUDGET = "DELETE_BUDGET"
     }
 }
 
@@ -2519,3 +3488,11 @@ class FirestoreGroupRepository(
 class FirestoreTransactionRepository(
     private val delegate: FirestoreSpendlyRepository = FirestoreSpendlyRepository()
 ) : TransactionRepository by delegate
+
+class FirestoreSettlementRepository(
+    private val delegate: FirestoreSpendlyRepository = FirestoreSpendlyRepository()
+) : SettlementRepository by delegate
+
+class FirestoreBudgetRepository(
+    private val delegate: FirestoreSpendlyRepository = FirestoreSpendlyRepository()
+) : BudgetRepository by delegate

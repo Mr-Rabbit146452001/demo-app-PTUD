@@ -1,6 +1,11 @@
 package com.example.nhoms8.domain.usecase
 
 import com.example.nhoms8.algorithm.FintechAlgorithm
+import com.example.nhoms8.domain.model.BudgetHealthLevel
+import com.example.nhoms8.domain.model.BudgetStatusSummary
+import com.example.nhoms8.domain.model.RecordStatus
+import com.example.nhoms8.domain.model.SpendlyBudget
+import com.example.nhoms8.domain.model.SpendlyExpense
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.PriorityQueue
@@ -65,6 +70,17 @@ data class LedgerMemberSummary(
 )
 
 /**
+ * Bản ghi giao dịch quyết toán công nợ chuẩn hóa cho sổ cái (Ledger) thuần JVM.
+ */
+data class LedgerSettlement(
+    val settlementId: String,
+    val fromUserId: String,
+    val toUserId: String,
+    val amount: Long,
+    val isConfirmed: Boolean
+)
+
+/**
  * Đề xuất chuyển khoản bù trừ nợ giữa hai thành viên.
  */
 data class DebtTransfer(
@@ -99,15 +115,43 @@ class SplitCalculationEngine {
         expenses = expenses
     )
 
+    fun computeMemberLedgerBalances(
+        memberIds: Collection<String>,
+        expenses: List<LedgerExpense>,
+        confirmedSettlements: List<LedgerSettlement>
+    ): Map<String, LedgerMemberSummary> = Companion.computeMemberLedgerBalances(
+        memberIds = memberIds,
+        expenses = expenses,
+        confirmedSettlements = confirmedSettlements
+    )
+
     fun computeGreedySettlements(
         netBalances: Map<String, Long>
     ): List<DebtTransfer> = Companion.computeGreedySettlements(
         netBalances = netBalances
     )
 
+    fun evaluateBudgetHealth(
+        limitAmount: Long,
+        spentAmount: Long
+    ): BudgetHealthLevel = Companion.evaluateBudgetHealth(
+        limitAmount = limitAmount,
+        spentAmount = spentAmount
+    )
+
+    fun computeBudgetSummary(
+        budget: SpendlyBudget,
+        activeExpenses: List<SpendlyExpense>
+    ): BudgetStatusSummary = Companion.computeBudgetSummary(
+        budget = budget,
+        activeExpenses = activeExpenses
+    )
+
     companion object {
         private val MIN_PERCENT_SUM = BigDecimal("99.99")
         private val MAX_PERCENT_SUM = BigDecimal("100.01")
+        private val FIFTY = BigDecimal(50)
+        private val EIGHTY = BigDecimal(80)
         private val HUNDRED = BigDecimal(100)
 
         private data class BalanceNode(
@@ -175,6 +219,21 @@ class SplitCalculationEngine {
         fun computeMemberLedgerBalances(
             memberIds: Collection<String>,
             expenses: List<LedgerExpense>
+        ): Map<String, LedgerMemberSummary> = computeMemberLedgerBalances(
+            memberIds = memberIds,
+            expenses = expenses,
+            confirmedSettlements = emptyList()
+        )
+
+        /**
+         * Tính số dư sổ cái có xét thêm các giao dịch quyết toán đã được xác nhận ([LedgerSettlement.isConfirmed] == true).
+         * Bất biến: với mọi giao dịch xác nhận hợp lệ, `fromUserId` cộng [amount] vào `totalPaid`
+         * và `toUserId` cộng [amount] vào `totalShare`, giữ `sum(netBalance) == 0`.
+         */
+        fun computeMemberLedgerBalances(
+            memberIds: Collection<String>,
+            expenses: List<LedgerExpense>,
+            confirmedSettlements: List<LedgerSettlement>
         ): Map<String, LedgerMemberSummary> {
             val paidMap = linkedMapOf<String, Long>()
             val shareMap = linkedMapOf<String, Long>()
@@ -196,6 +255,20 @@ class SplitCalculationEngine {
                 }
             }
 
+            confirmedSettlements.forEach { settlement ->
+                if (!settlement.isConfirmed || settlement.amount <= 0L) return@forEach
+                if (settlement.fromUserId.isBlank() || settlement.toUserId.isBlank()) return@forEach
+                if (settlement.fromUserId == settlement.toUserId) return@forEach
+
+                paidMap[settlement.fromUserId] =
+                    (paidMap[settlement.fromUserId] ?: 0L) + settlement.amount
+                shareMap.putIfAbsent(settlement.fromUserId, 0L)
+
+                shareMap[settlement.toUserId] =
+                    (shareMap[settlement.toUserId] ?: 0L) + settlement.amount
+                paidMap.putIfAbsent(settlement.toUserId, 0L)
+            }
+
             val summaries = linkedMapOf<String, LedgerMemberSummary>()
             paidMap.keys.forEach { userId ->
                 val totalPaid = paidMap[userId] ?: 0L
@@ -208,6 +281,80 @@ class SplitCalculationEngine {
                 )
             }
             return summaries
+        }
+
+        /**
+         * Đánh giá mức độ sức khỏe ngân sách 4 cấp độ:
+         * - <= 50% -> NORMAL
+         * - > 50% && <= 80% -> WATCH
+         * - > 80% && <= 100% -> WARNING
+         * - > 100% -> EXCEEDED
+         */
+        fun evaluateBudgetHealth(
+            limitAmount: Long,
+            spentAmount: Long
+        ): BudgetHealthLevel {
+            if (spentAmount <= 0L) return BudgetHealthLevel.NORMAL
+            if (limitAmount <= 0L) return BudgetHealthLevel.EXCEEDED
+
+            val scaledSpent = BigDecimal.valueOf(spentAmount).multiply(HUNDRED)
+            val limitBd = BigDecimal.valueOf(limitAmount)
+            return when {
+                scaledSpent <= limitBd.multiply(FIFTY) -> BudgetHealthLevel.NORMAL
+                scaledSpent <= limitBd.multiply(EIGHTY) -> BudgetHealthLevel.WATCH
+                scaledSpent <= limitBd.multiply(HUNDRED) -> BudgetHealthLevel.WARNING
+                else -> BudgetHealthLevel.EXCEEDED
+            }
+        }
+
+        /**
+         * Tổng hợp tiến độ sử dụng và mức cảnh báo của một ngân sách dựa trên các khoản chi active.
+         * Nếu [SpendlyBudget.category] != null thì chỉ tính các khoản chi thuộc danh mục đó.
+         */
+        fun computeBudgetSummary(
+            budget: SpendlyBudget,
+            activeExpenses: List<SpendlyExpense>
+        ): BudgetStatusSummary {
+            val spentAmount = activeExpenses
+                .asSequence()
+                .filter { it.status == RecordStatus.ACTIVE }
+                .filter { budget.groupId.isBlank() || it.groupId.isBlank() || it.groupId == budget.groupId }
+                .filter { budget.category == null || it.category == budget.category }
+                .filter { expense ->
+                    if (budget.startDateMillis <= 0L && budget.endDateMillis <= 0L) {
+                        true
+                    } else {
+                        val effectiveDate = if (expense.expenseDateMillis > 0L) {
+                            expense.expenseDateMillis
+                        } else {
+                            expense.createdAtMillis
+                        }
+                        val afterStart = budget.startDateMillis <= 0L || effectiveDate >= budget.startDateMillis
+                        val beforeEnd = budget.endDateMillis <= 0L || effectiveDate <= budget.endDateMillis
+                        afterStart && beforeEnd
+                    }
+                }
+                .sumOf { it.amount }
+
+            val remainingAmount = budget.limitAmount - spentAmount
+            val usagePercent = when {
+                budget.limitAmount > 0L ->
+                    (spentAmount.toDouble() * 100.0 / budget.limitAmount.toDouble()).toFloat()
+                spentAmount > 0L -> 100f
+                else -> 0f
+            }
+            val level = evaluateBudgetHealth(
+                limitAmount = budget.limitAmount,
+                spentAmount = spentAmount
+            )
+
+            return BudgetStatusSummary(
+                budget = budget,
+                spentAmount = spentAmount,
+                remainingAmount = remainingAmount,
+                usagePercent = usagePercent,
+                level = level
+            )
         }
 
         /**

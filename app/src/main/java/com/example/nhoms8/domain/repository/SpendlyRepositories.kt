@@ -4,11 +4,13 @@ import com.example.nhoms8.domain.model.ExpenseParticipant
 import com.example.nhoms8.domain.model.GroupActivity
 import com.example.nhoms8.domain.model.GroupRole
 import com.example.nhoms8.domain.model.MemberBalance
+import com.example.nhoms8.domain.model.SpendlyBudget
 import com.example.nhoms8.domain.model.SpendlyExpense
 import com.example.nhoms8.domain.model.SpendlyGroup
 import com.example.nhoms8.domain.model.SpendlyGroupMember
 import com.example.nhoms8.domain.model.SpendlyIncome
 import com.example.nhoms8.domain.model.SpendlyNotification
+import com.example.nhoms8.domain.model.SpendlySettlement
 import com.example.nhoms8.domain.model.SpendlyUser
 import kotlinx.coroutines.flow.Flow
 
@@ -135,5 +137,49 @@ interface TransactionRepository {
         incomeId: String,
         actorId: String,
         actorName: String
+    ): Result<Unit>
+}
+
+/**
+ * Giao diện kho dữ liệu quy trình quyết toán công nợ 2 bước (Đề xuất -> Xác nhận / Từ chối).
+ */
+interface SettlementRepository {
+    fun observeSettlements(groupId: String): Flow<List<SpendlySettlement>>
+
+    suspend fun createSettlementRequest(
+        groupId: String,
+        settlement: SpendlySettlement
+    ): Result<SpendlySettlement>
+
+    suspend fun confirmSettlement(
+        groupId: String,
+        settlementId: String,
+        actorId: String,
+        actorName: String
+    ): Result<Unit>
+
+    suspend fun rejectSettlement(
+        groupId: String,
+        settlementId: String,
+        actorId: String,
+        actorName: String,
+        reason: String = ""
+    ): Result<Unit>
+}
+
+/**
+ * Giao diện kho dữ liệu quản lý ngân sách nhóm và ngân sách theo danh mục.
+ */
+interface BudgetRepository {
+    fun observeBudgets(groupId: String): Flow<List<SpendlyBudget>>
+
+    suspend fun upsertBudget(
+        groupId: String,
+        budget: SpendlyBudget
+    ): Result<SpendlyBudget>
+
+    suspend fun deleteBudget(
+        groupId: String,
+        budgetId: String
     ): Result<Unit>
 }

@@ -224,3 +224,80 @@ data class SpendlyNotification(
     val isRead: Boolean = false,
     val createdAtMillis: Long = 0L
 )
+
+/**
+ * Trạng thái quy trình quyết toán công nợ 2 bước (Đề xuất -> Xác nhận / Từ chối).
+ */
+enum class SettlementStatus(val label: String) {
+    PENDING("Chờ xác nhận"),
+    CONFIRMED("Đã xác nhận"),
+    REJECTED("Từ chối");
+
+    companion object {
+        fun fromRaw(raw: String?): SettlementStatus =
+            entries.firstOrNull { it.name.equals(raw?.trim(), ignoreCase = true) } ?: PENDING
+    }
+}
+
+/**
+ * Giao dịch đề xuất quyết toán công nợ tại `groups/{groupId}/settlements/{settlementId}`.
+ */
+data class SpendlySettlement(
+    val settlementId: String = "",
+    val groupId: String = "",
+    val fromUserId: String = "",
+    val fromUserName: String = "",
+    val toUserId: String = "",
+    val toUserName: String = "",
+    val amount: Long = 0L,
+    val status: SettlementStatus = SettlementStatus.PENDING,
+    val note: String = "",
+    val bankInfo: String = "",
+    val createdBy: String = "",
+    val createdAtMillis: Long = 0L,
+    val confirmedAtMillis: Long? = null,
+    val confirmedBy: String? = null
+)
+
+/**
+ * Mức độ sức khỏe ngân sách 4 cấp độ (Bình thường, Theo dõi, Cảnh báo, Vượt ngân sách).
+ */
+enum class BudgetHealthLevel(val label: String) {
+    NORMAL("Bình thường"),
+    WATCH("Theo dõi"),
+    WARNING("Cảnh báo"),
+    EXCEEDED("Vượt ngân sách");
+
+    companion object {
+        fun fromRaw(raw: String?): BudgetHealthLevel =
+            entries.firstOrNull { it.name.equals(raw?.trim(), ignoreCase = true) } ?: NORMAL
+    }
+}
+
+/**
+ * Cấu hình ngân sách nhóm hoặc theo danh mục tại `groups/{groupId}/budgets/{budgetId}`.
+ */
+data class SpendlyBudget(
+    val budgetId: String = "",
+    val groupId: String = "",
+    val name: String = "",
+    val limitAmount: Long = 0L,
+    val period: String = "MONTHLY",
+    val startDateMillis: Long = 0L,
+    val endDateMillis: Long = 0L,
+    val category: SpendlyCategory? = null,
+    val isActive: Boolean = true,
+    val createdBy: String = "",
+    val updatedAtMillis: Long = 0L
+)
+
+/**
+ * Tổng hợp tiến độ sử dụng và trạng thái cảnh báo của một ngân sách.
+ */
+data class BudgetStatusSummary(
+    val budget: SpendlyBudget,
+    val spentAmount: Long,
+    val remainingAmount: Long,
+    val usagePercent: Float,
+    val level: BudgetHealthLevel
+)

@@ -209,7 +209,7 @@ fun ChatbotScreen(
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        text = "Gemini 1.5 Flash ✨",
+                                        text = "Gemini 2.5 Flash ✨",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = emeraldGreen

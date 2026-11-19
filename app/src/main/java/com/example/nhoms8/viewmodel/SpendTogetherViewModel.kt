@@ -605,11 +605,19 @@ class SpendTogetherViewModel(
             val currentBudget = repository.budget.value
             val activeSnapshot = resolveActiveSnapshot()
 
-            // 1. Nếu đã cấu hình Google Gemini API Key trong local.properties: Gọi Gemini 1.5 Flash
+            // 1. Nếu đã cấu hình Google Gemini API Key trong local.properties: Gọi Gemini 2.5 Flash
             if (geminiChatRepository.isApiKeyConfigured()) {
                 try {
                     val contextPrompt = buildContextPrompt(activeSnapshot, currentBudget)
-                    val geminiResult = geminiChatRepository.sendMessage(trimmed, contextPrompt)
+                    val recentHistory = _chatMessages.value
+                        .dropLast(1) // Bỏ tin nhắn hiện tại vừa thêm
+                        .takeLast(6)
+                        .map { it.isFromUser to it.text }
+                    val geminiResult = geminiChatRepository.sendMessage(
+                        userMessage = trimmed,
+                        groupContextPrompt = contextPrompt,
+                        recentHistory = recentHistory
+                    )
                     val botMessage = ChatMessage(
                         text = geminiResult.cleanText,
                         isFromUser = false,
@@ -764,20 +772,43 @@ class SpendTogetherViewModel(
         val groupSummary = summarizeGroup(activeSnapshot)
 
         // Phân tích tạo khoản chi ("ăn", "uống", "chi", "trả", "k", "đ", "tiền", "mua", "lẩu", "cà phê")
-        val amountRegex = Regex("(\\d+[.,]?\\d*)\\s*(k|nghìn|ngàn|tr|triệu|đ|vnd)?", RegexOption.IGNORE_CASE)
-        val match = amountRegex.findAll(trimmed).firstOrNull()
+        val amountRegex = Regex("(\\d+[.,]?\\d*)\\s*(k|nghìn|ngàn|tr|triệu|đ|vnd|đồng)?", RegexOption.IGNORE_CASE)
+        val match = amountRegex.findAll(trimmed).firstOrNull { m ->
+            val unit = m.groupValues[2].lowercase()
+            val numVal = m.groupValues[1].replace(",", "").replace(".", "").toDoubleOrNull() ?: 0.0
+            unit.isNotEmpty() || numVal >= 1000.0
+        }
         val detectedAmount: Long? = match?.let {
             val numPart = it.groupValues[1].replace(",", "").replace(".", "").toDoubleOrNull() ?: return@let null
             val unit = it.groupValues[2].lowercase()
             when {
                 unit == "k" || unit == "nghìn" || unit == "ngàn" -> (numPart * 1000).toLong()
                 unit == "tr" || unit == "triệu" -> (numPart * 1000000).toLong()
-                numPart < 1000 -> (numPart * 1000).toLong()
+                numPart < 1000 && unit.isNotEmpty() -> (numPart * 1000).toLong()
                 else -> numPart.toLong()
             }
         }
 
-        val isExpenseIntent = (detectedAmount != null && detectedAmount > 0) &&
+        val isReminderRequest = lower.contains("nhắc nợ") ||
+            lower.contains("đòi nợ") ||
+            lower.contains("nhắc tiền") ||
+            lower.contains("soạn tin")
+        val isDebtInquiry = !isReminderRequest && (
+            lower.contains("ai nợ") ||
+                lower.contains("ai đang nợ") ||
+                lower.contains("tôi nợ") ||
+                lower.contains("tôi đang nợ") ||
+                lower.contains("công nợ") ||
+                lower.contains("nợ nhiều nhất") ||
+                lower.contains("nợ ai")
+            )
+        val isTopSpenderOrCategoryInquiry = lower.contains("chi nhiều nhất") ||
+            lower.contains("tiêu nhiều nhất") ||
+            lower.contains("khoản chi lớn nhất") ||
+            lower.contains("danh mục") ||
+            lower.contains("thành viên")
+
+        val isExpenseIntent = !isReminderRequest && !isDebtInquiry && (detectedAmount != null && detectedAmount > 0) &&
                 (lower.contains("ăn") || lower.contains("uống") || lower.contains("chi") || lower.contains("trả") ||
                         lower.contains("mua") || lower.contains("hết") || lower.contains("tiền") || lower.contains("lẩu") ||
                         lower.contains("phở") || lower.contains("cơm") || lower.contains("cafe") || lower.contains("cà phê") ||
@@ -883,8 +914,69 @@ class SpendTogetherViewModel(
                 }
             }
 
+            // Hỏi về công nợ hiện tại (Ai nợ ai?)
+            isDebtInquiry -> {
+                if (groupSummary != null) {
+                    val text = if (groupSummary.transfers.isEmpty()) {
+                        "✅ Hiện tại trong quỹ ${groupSummary.group.name} không có khoản nợ nào cần thanh toán! Mọi người đã cân bằng."
+                    } else {
+                        val lines = groupSummary.transfers.joinToString("\n") { t ->
+                            val from = groupSummary.memberNamesById[t.fromUserId] ?: t.fromUserId
+                            val to = groupSummary.memberNamesById[t.toUserId] ?: t.toUserId
+                            "• $from cần trả $to: ${FintechAlgorithm.formatVnd(t.amount)}"
+                        }
+                        "⚖️ Tổng hợp công nợ tối ưu của ${groupSummary.group.name}:\n\n$lines"
+                    }
+                    ChatMessage(text = text, isFromUser = false)
+                } else {
+                    val unpaid = repository.debts.value.filterNot { it.isPaid }
+                    val text = if (unpaid.isEmpty()) {
+                        "✅ Hiện tại không còn khoản nợ nào chưa thanh toán!"
+                    } else {
+                        val lines = unpaid.joinToString("\n") {
+                            "• ${it.debtorName} nợ ${it.creditorName}: ${it.amountFormatted}"
+                        }
+                        "⚖️ Các khoản nợ đang chờ quyết toán:\n\n$lines"
+                    }
+                    ChatMessage(text = text, isFromUser = false)
+                }
+            }
+
+            // Hỏi về người chi nhiều nhất / danh mục / thành viên
+            isTopSpenderOrCategoryInquiry -> {
+                if (groupSummary != null) {
+                    val topExp = groupSummary.activeExpenses.maxByOrNull { it.amount }
+                    val topCat = groupSummary.activeExpenses.groupBy { it.category }
+                        .mapValues { (_, list) -> list.sumOf { it.amount } }
+                        .maxByOrNull { it.value }
+                    val membersText = groupSummary.members.joinToString { it.displayName }
+                    ChatMessage(
+                        text = buildString {
+                            append("📈 Phân tích nhanh quỹ ${groupSummary.group.name}:\n\n")
+                            append("• Thành viên (${groupSummary.members.size}): $membersText\n")
+                            if (topCat != null) {
+                                append("• Danh mục chi nhiều nhất: ${topCat.key.label} (${FintechAlgorithm.formatVnd(topCat.value)})\n")
+                            }
+                            if (topExp != null) {
+                                append("• Khoản chi lớn nhất: ${topExp.title} — ${FintechAlgorithm.formatVnd(topExp.amount)} (${topExp.payerName} trả)")
+                            }
+                        }.trim(),
+                        isFromUser = false
+                    )
+                } else {
+                    val state = uiState.value
+                    val topCat = state.categoryReportItems.maxByOrNull { it.amount }
+                    ChatMessage(
+                        text = "📈 Phân tích nhanh:\n\n" +
+                            "• ${state.highestSpenderNote}\n" +
+                            (if (topCat != null && topCat.amount > 0L) "• Danh mục chi nhiều nhất: ${topCat.categoryName} (${topCat.amountFormatted})" else ""),
+                        isFromUser = false
+                    )
+                }
+            }
+
             // Nhắc nợ / đòi nợ
-            lower.contains("nhắc nợ") || lower.contains("đòi nợ") || lower.contains("nhắc tiền") || lower.contains("nợ") -> {
+            isReminderRequest || lower.contains("nợ") -> {
                 if (groupSummary != null) {
                     val mentionedMember = findMentionedMember(trimmed, groupSummary.members)
                     val matchedTransfer = if (mentionedMember != null) {

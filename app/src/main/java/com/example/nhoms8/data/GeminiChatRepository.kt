@@ -21,54 +21,60 @@ data class GeminiResult(
 )
 
 /**
- * Kho xử lý Trợ lý ảo Google Gemini 1.5 Flash (GeminiChatRepository)
- * Phụ trách bởi Kỹ sư Thuật toán & Dữ liệu - Nhóm 08 (SpendTogether)
+ * Kho xử lý Trợ lý ảo Google Gemini 2.5 Flash (GeminiChatRepository)
+ * Phụ trách bởi Kỹ sư Thuật toán & Dữ liệu - Nhóm 08 (Spendly)
  */
 class GeminiChatRepository(
     private val apiKey: String = BuildConfig.GEMINI_API_KEY
 ) {
 
     private val systemInstructionText = """
-        Bạn là FinSprout 🌱 - Trợ lý AI tài chính cá nhân & nhóm thông minh của ứng dụng SpendTogether (PTIT Nhóm 08).
-        Tính cách: Thân thiện, vui vẻ, năng động, am hiểu tài chính, luôn xưng 'FinSprout' hoặc 'mình', gọi người dùng là 'bạn'.
+        Bạn là FinSprout 🌱 - Trợ lý AI tài chính cá nhân & nhóm thông minh của ứng dụng Spendly (Nhóm 08).
+        Tính cách: Thân thiện, rõ ràng, thực tế, am hiểu tài chính, luôn xưng 'FinSprout' hoặc 'mình', gọi người dùng là 'bạn'.
         Luôn sử dụng biểu tượng cảm xúc phù hợp: 🌱, 💰, 📊, 💌, ✨.
 
         Nhiệm vụ 1: GHI NHẬN KHOẢN CHI TỰ NHIÊN
-        Khi người dùng nói về một khoản chi (ví dụ: 'Ăn lẩu 650k Hùng trả', 'Mua trà sữa 90k', 'Tiền mạng 330k Nam trả'):
-        Hãy gửi phản hồi vui vẻ xác nhận thông tin và LUÔN đính kèm khối thẻ hành động ở cuối câu trả lời theo đúng định dạng sau:
+        Chỉ khi người dùng mô tả một khoản chi mới vừa phát sinh có số tiền cụ thể (ví dụ: 'Ăn lẩu 650k Hùng trả', 'Mua trà sữa 90k', 'Tiền mạng 330k'):
+        Hãy gửi phản hồi xác nhận ngắn gọn và LUÔN đính kèm khối thẻ hành động ở cuối câu trả lời theo đúng định dạng sau:
         <<<ACTION_EXPENSE>>>
         {"title":"Ăn lẩu nhóm","amount":650000,"category":"FOOD","categoryName":"Ăn uống","payerName":"Lê Văn Hùng","splitSummary":"Chia đều cho cả nhóm"}
         <<<END_ACTION_EXPENSE>>>
         (Các danh mục hợp lệ: FOOD - Ăn uống, HOUSING - Nhà ở & Tiện ích, TRANSPORT - Đi lại & Di chuyển, OTHER - Chi tiêu khác).
 
         Nhiệm vụ 2: SOẠN MẪU TIN NHẮN NHẮC NỢ
-        Khi người dùng nhờ nhắc nợ / đòi nợ ai đó (ví dụ: 'Viết tin nhắn nhắc Linh chuyển 120k tiền lẩu'):
+        Chỉ khi người dùng nhờ soạn tin nhắn nhắc nợ / đòi nợ ai đó (ví dụ: 'Viết tin nhắn nhắc Linh chuyển 120k tiền lẩu', 'Nhắc nợ bạn Đạt'):
         Hãy viết một tin nhắn dễ thương, lịch sự, không làm mất lòng bạn bè và LUÔN đính kèm khối:
         <<<ACTION_REMINDER>>>
         {"recipientName":"Linh","amountFormatted":"120.000 đ","suggestedMessage":"Ting ting! 🧋 Linh ơi, hôm trước nhóm mình ăn lẩu vui quá. Phần của bạn là 120.000đ nè, khi nào tiện bạn chuyển khoản vào quỹ giúp nhóm nhé! Cảm ơn bạn nhiều ❤️"}
         <<<END_ACTION_REMINDER>>>
+        (Lưu ý: Nếu người dùng chỉ hỏi "Ai đang nợ ai?" hay "Tôi nợ bao nhiêu?", hãy trả lời số liệu từ ngữ cảnh, KHÔNG xuất <<<ACTION_REMINDER>>>).
 
-        Nhiệm vụ 3: PHÂN TÍCH TÀI CHÍNH & MẸO TIẾT KIỆM
-        Dựa vào số liệu trong [NGỮ CẢNH QUỸ NHÓM HIỆN TẠI] mà hệ thống cung cấp, trả lời ngắn gọn, rõ ràng, đưa ra đánh giá thực tế và lời khuyên tiết kiệm hữu ích.
+        Nhiệm vụ 3: PHÂN TÍCH TÀI CHÍNH, HỎI ĐÁP CÔNG NỢ & MẸO TIẾT KIỆM
+        Dựa chính xác vào số liệu trong [NGỮ CẢNH QUỸ NHÓM HIỆN TẠI] (không bịa số liệu), trả lời đúng trọng tâm câu hỏi của người dùng một cách ngắn gọn, dễ hiểu.
     """.trimIndent()
 
-    private val generativeModel: GenerativeModel? by lazy {
-        if (isApiKeyConfigured()) {
-            try {
-                GenerativeModel(
-                    modelName = "gemini-1.5-flash",
-                    apiKey = apiKey,
-                    systemInstruction = content { text(systemInstructionText) },
-                    generationConfig = generationConfig {
-                        temperature = 0.7f
-                        topK = 40
-                        topP = 0.95f
-                    }
-                )
-            } catch (_: Throwable) {
-                null
-            }
-        } else {
+    private val primaryModel: GenerativeModel? by lazy {
+        createModel("gemini-2.5-flash")
+    }
+
+    private val fallbackModel: GenerativeModel? by lazy {
+        createModel("gemini-flash-latest")
+    }
+
+    private fun createModel(modelName: String): GenerativeModel? {
+        if (!isApiKeyConfigured()) return null
+        return try {
+            GenerativeModel(
+                modelName = modelName,
+                apiKey = apiKey,
+                systemInstruction = content { text(systemInstructionText) },
+                generationConfig = generationConfig {
+                    temperature = 0.6f
+                    topK = 40
+                    topP = 0.95f
+                }
+            )
+        } catch (_: Throwable) {
             null
         }
     }
@@ -81,26 +87,40 @@ class GeminiChatRepository(
     }
 
     /**
-     * Gửi tin nhắn tới Gemini 1.5 Flash kèm ngữ cảnh quỹ nhóm
+     * Gửi tin nhắn tới Gemini 2.5 Flash kèm ngữ cảnh quỹ nhóm và lịch sử hội thoại gần nhất
      */
     suspend fun sendMessage(
         userMessage: String,
-        groupContextPrompt: String
+        groupContextPrompt: String,
+        recentHistory: List<Pair<Boolean, String>> = emptyList()
     ): GeminiResult = withContext(Dispatchers.IO) {
-        val model = generativeModel
-        if (model == null) {
-            throw IllegalStateException("Chưa cấu hình GEMINI_API_KEY trong local.properties")
+        val model = primaryModel
+            ?: throw IllegalStateException("Chưa cấu hình GEMINI_API_KEY trong local.properties")
+
+        val historyBlock = if (recentHistory.isNotEmpty()) {
+            val formatted = recentHistory.joinToString("\n") { (isUser, text) ->
+                val role = if (isUser) "Người dùng" else "FinSprout"
+                "$role: ${text.take(300)}"
+            }
+            "\n\n[LỊCH SỬ HỘI THOẠI GẦN ĐÂY]\n$formatted"
+        } else {
+            ""
         }
 
         val fullPrompt = """
             [NGỮ CẢNH QUỸ NHÓM HIỆN TẠI]
-            $groupContextPrompt
+            $groupContextPrompt$historyBlock
             
             [TIN NHẮN NGƯỜI DÙNG]
             $userMessage
         """.trimIndent()
 
-        val response = model.generateContent(fullPrompt)
+        val response = try {
+            model.generateContent(fullPrompt)
+        } catch (primaryError: Exception) {
+            val backup = fallbackModel ?: throw primaryError
+            backup.generateContent(fullPrompt)
+        }
         val rawText = response.text ?: "FinSprout đã lắng nghe bạn 🌱"
 
         parseGeminiOutput(rawText)

@@ -1,9 +1,5 @@
 package com.example.nhoms8
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,7 +22,33 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.CurrencyExchange
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.NotificationsNone
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material.icons.rounded.Savings
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,32 +58,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.nhoms8.ui.theme.Nhoms8Theme
+import com.example.nhoms8.core.designsystem.GlassCard
+import com.example.nhoms8.core.designsystem.GradientCard
+import com.example.nhoms8.core.designsystem.OrganicBackground
+import com.example.nhoms8.core.designsystem.spendlyGlassSurface
+import com.example.nhoms8.ui.theme.SpendlyShapeTokens
+import com.example.nhoms8.ui.theme.SpendlyTheme
+import com.example.nhoms8.ui.theme.spendlyColors
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.rememberHazeState
 
 /**
  * 15 · Màn hình Cá nhân và cài đặt (Profile & Settings Screen)
- * Thiết kế chuẩn ứng dụng SpendTogether theo Figma:
- * - Nền be kem ấm áp, mảng cong xanh xô thơm
- * - Header: "Cá nhân", dòng phụ "Tài khoản & cài đặt", nút tròn mã QR
- * - Thẻ hồ sơ người dùng xanh rêu sẫm: Avatar "VH", tên "Lê Văn Hùng", vai trò, nút chỉnh sửa
- * - Thẻ Nhóm đang hoạt động: Icon nhà tim, "Quỹ Chi Tiêu Nhóm 08", "4 thành viên · Quỹ hoạt động", nút "Đổi nhóm"
- * - Thẻ Tùy chỉnh: Thông báo giao dịch (Toggle), Giao diện, Đơn vị tiền tệ
- * - Thẻ Bảo mật & Hỗ trợ: Bảo mật tài khoản, Trung tâm trợ giúp, Đăng xuất (màu đỏ)
- * - Thanh điều hướng đáy (Bottom Navigation Bar) cố định với tab Cá nhân đang active
+ * Đồng bộ hoàn toàn theo hệ thống thiết kế Spendly Lavender / Organic / Haze 2.1.0:
+ * - Header "Cá nhân" + nút mã QR kính mờ
+ * - Thẻ GradientCard hồ sơ người dùng
+ * - Thẻ GlassCard "Tài chính cá nhân" (Lịch sử, Ngân sách, Công nợ)
+ * - Thẻ GlassCard "Nhóm đang hoạt động"
+ * - Thẻ GlassCard "Tùy chỉnh" & "Bảo mật & Hỗ trợ"
  */
 @Composable
 fun ProfileScreen(
@@ -78,614 +101,395 @@ fun ProfileScreen(
     onHelpClicked: () -> Unit = {},
     onLogoutClicked: () -> Unit = {},
     onNavTabSelected: (BottomNavTab) -> Unit = {},
-    showBottomBar: Boolean = true
+    showBottomBar: Boolean = true,
+    onPersonalHistoryClicked: () -> Unit = {},
+    onPersonalBudgetClicked: () -> Unit = {},
+    onPersonalDebtsClicked: () -> Unit = {},
+    personalDebtsSummary: String? = null
 ) {
-    // Bảng màu thiết kế chuẩn Figma SpendTogether
-    val backgroundColor = Color(0xFFF5F3EC)      // Màu be kem nhạt ấm áp
-    val ambientSage = Color(0xFFDDEAE0)          // Màu xanh xô thơm nhạt trang trí
-    val forestGreenDark = Color(0xFF14382C)      // Xanh rêu sẫm thương hiệu
-    val textMuted = Color(0xFF6E7C74)            // Màu xám xanh phụ đề
-    val sectionLabelColor = Color(0xFF5E8C76)    // Màu nhãn tiêu đề section
-    val iconMintBg = Color(0xFFE2F4E9)           // Nền squircle xanh mint cho icon
-    val logoutRedBg = Color(0xFFFDECE9)          // Nền squircle đỏ hồng nhạt cho Đăng xuất
-    val logoutRedText = Color(0xFFD9534F)        // Màu chữ & icon Đăng xuất
-    val chevronColor = Color(0xFFA0ACA5)         // Màu mũi tên chevron phải
-
-    // Trạng thái bật/tắt thông báo giao dịch
+    val colors = MaterialTheme.spendlyColors
+    val hazeState = rememberHazeState()
     var notificationEnabled by remember { mutableStateOf(true) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
+    OrganicBackground(
+        modifier = Modifier.fillMaxSize(),
+        hazeState = hazeState
     ) {
-        // 1. Họa tiết nền cong mềm mại góc trên bên phải & dưới bên trái
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-
-            // Mảng cong góc trên bên phải
-            drawCircle(
-                color = ambientSage,
-                radius = w * 0.45f,
-                center = Offset(w * 0.95f, h * 0.04f)
-            )
-
-            // Mảng cong lớn góc dưới bên trái
-            drawCircle(
-                color = ambientSage,
-                radius = w * 0.55f,
-                center = Offset(w * 0.05f, h * 0.86f)
-            )
-        }
-
-        // 2. Nội dung chính toàn màn hình
         Column(modifier = Modifier.fillMaxSize()) {
-            // Phần nội dung cuộn dọc
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .statusBarsPadding()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp)
+                    .padding(horizontal = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // ====================== 1. HEADER ======================
+                // 1. HEADER
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Cụm tiêu đề bên trái
                     Column {
                         Text(
                             text = "Cá nhân",
-                            fontSize = 25.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = forestGreenDark,
-                            letterSpacing = (-0.4).sp
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = colors.textPrimary
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Tài khoản & cài đặt",
-                            fontSize = 13.sp,
-                            color = textMuted
+                            text = "Tài khoản & tài chính cá nhân",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textMuted
                         )
                     }
 
-                    // Nút Mã QR bên phải
                     Box(
                         modifier = Modifier
                             .size(44.dp)
-                            .shadow(
-                                elevation = 3.dp,
+                            .spendlyGlassSurface(
+                                hazeState = hazeState,
                                 shape = CircleShape,
-                                ambientColor = Color.Black.copy(alpha = 0.06f),
-                                spotColor = Color.Black.copy(alpha = 0.08f)
+                                tintColor = colors.glassContainer
                             )
-                            .background(Color.White, CircleShape)
-                            .clickable { onQrCodeClicked() },
+                            .clickable(role = Role.Button, onClick = onQrCodeClicked),
                         contentAlignment = Alignment.Center
                     ) {
-                        QrCodeIcon(
-                            color = forestGreenDark,
-                            modifier = Modifier.size(20.dp)
+                        Icon(
+                            imageVector = Icons.Rounded.QrCode2,
+                            contentDescription = "Mã QR nhận tiền",
+                            tint = colors.textPrimary,
+                            modifier = Modifier.size(21.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // ====================== 2. THẺ HỒ SƠ NGƯỜI DÙNG ======================
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 4.dp,
-                            shape = RoundedCornerShape(22.dp),
-                            ambientColor = forestGreenDark.copy(alpha = 0.2f),
-                            spotColor = forestGreenDark.copy(alpha = 0.25f)
-                        )
-                        .background(forestGreenDark, RoundedCornerShape(22.dp))
-                        .padding(horizontal = 18.dp, vertical = 18.dp)
+                // 2. HERO USER PROFILE GRADIENT CARD
+                GradientCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(18.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Cụm Avatar + Tên + Thông tin
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f)
                         ) {
-                            // Avatar tròn nền xanh bạc hà nhạt
                             Box(
                                 modifier = Modifier
-                                    .size(52.dp)
-                                    .background(Color(0xFFCBE8D6), CircleShape)
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.24f))
                                     .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = userInitials,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = forestGreenDark
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
                                 )
                             }
 
                             Spacer(modifier = Modifier.width(14.dp))
 
-                            // Họ tên và chi tiết
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = userName,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                     color = Color.White,
-                                    letterSpacing = (-0.2).sp
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(3.dp))
                                 Text(
                                     text = userSubtitle,
-                                    fontSize = 12.5.sp,
-                                    color = Color(0xFFA8C5B8)
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.18f))
+                                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                                .clickable(role = Role.Button, onClick = onEditProfileClicked),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Chỉnh sửa hồ sơ",
+                                tint = Color.White,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+
+                // 3. TÀI CHÍNH CÁ NHÂN (PERSONAL FINANCE SHORTCUTS)
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    hazeState = hazeState,
+                    contentPadding = PaddingValues(18.dp)
+                ) {
+                    SectionCaption(text = "TÀI CHÍNH CÁ NHÂN")
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    ProfileMenuRow(
+                        icon = Icons.Rounded.History,
+                        iconBg = colors.lavenderContainer,
+                        iconTint = colors.onLavenderContainer,
+                        title = "Lịch sử giao dịch",
+                        subtitle = "Xem tất cả khoản thu chi cá nhân & nhóm",
+                        onClick = onPersonalHistoryClicked
+                    )
+
+                    ProfileSectionDivider()
+
+                    ProfileMenuRow(
+                        icon = Icons.Rounded.Savings,
+                        iconBg = colors.mintContainer,
+                        iconTint = colors.mintDeep,
+                        title = "Ngân sách & Báo cáo",
+                        subtitle = "Theo dõi hạn mức và xu hướng chi tiêu",
+                        onClick = onPersonalBudgetClicked
+                    )
+
+                    ProfileSectionDivider()
+
+                    ProfileMenuRow(
+                        icon = Icons.Rounded.SwapHoriz,
+                        iconBg = colors.amberContainer,
+                        iconTint = colors.amberDeep,
+                        title = "Công nợ & Quyết toán",
+                        subtitle = personalDebtsSummary?.takeIf { it.isNotBlank() }
+                            ?: "Kiểm tra khoản cần trả hoặc được hoàn lại",
+                        onClick = onPersonalDebtsClicked
+                    )
+                }
+
+                // 4. NHÓM ĐANG HOẠT ĐỘNG
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    hazeState = hazeState,
+                    contentPadding = PaddingValues(18.dp)
+                ) {
+                    SectionCaption(text = "NHÓM ĐANG HOẠT ĐỘNG")
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(colors.lavenderContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AccountBalanceWallet,
+                                    contentDescription = null,
+                                    tint = colors.onLavenderContainer,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = groupName,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = colors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = groupSubtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        // Nút chỉnh sửa tròn kính mờ
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                                .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
-                            .clickable { onEditProfileClicked() },
-                            contentAlignment = Alignment.Center
+                                .clip(SpendlyShapeTokens.Pill)
+                                .background(colors.lavenderContainer)
+                                .clickable(role = Role.Button, onClick = onChangeGroupClicked)
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            PencilEditIcon(
-                                color = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // ====================== 3. THẺ NHÓM ĐANG HOẠT ĐỘNG ======================
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 2.dp,
-                            shape = RoundedCornerShape(22.dp),
-                            ambientColor = Color.Black.copy(alpha = 0.04f),
-                            spotColor = Color.Black.copy(alpha = 0.06f)
-                        )
-                        .background(Color.White, RoundedCornerShape(22.dp))
-                        .padding(horizontal = 18.dp, vertical = 16.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Nhãn tiêu đề thẻ
-                        Text(
-                            text = "NHÓM ĐANG HOẠT ĐỘNG",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = sectionLabelColor,
-                            letterSpacing = 0.8.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Cụm icon nhà tim + thông tin nhóm
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                // Vòng tròn nền xanh cốm nhạt chứa icon nhà tim
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .background(Color(0xFFDCE8AC), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    HomeHeartIcon(
-                                        color = forestGreenDark,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = groupName,
-                                        fontSize = 15.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = forestGreenDark
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = groupSubtitle,
-                                        fontSize = 12.5.sp,
-                                        color = textMuted
-                                    )
-                                }
-                            }
-
-                            // Nút text "Đổi nhóm"
                             Text(
                                 text = "Đổi nhóm",
-                                fontSize = 13.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF387E58),
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = colors.onLavenderContainer
+                            )
+                        }
+                    }
+                }
+
+                // 5. TÙY CHỈNH
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    hazeState = hazeState,
+                    contentPadding = PaddingValues(18.dp)
+                ) {
+                    SectionCaption(text = "TÙY CHỈNH")
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
                                 modifier = Modifier
-                                    .clickable { onChangeGroupClicked() }
-                                    .padding(vertical = 4.dp, horizontal = 4.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // ====================== 4. THẺ CÀI ĐẶT TÙY CHỈNH ======================
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 2.dp,
-                            shape = RoundedCornerShape(22.dp),
-                            ambientColor = Color.Black.copy(alpha = 0.04f),
-                            spotColor = Color.Black.copy(alpha = 0.06f)
-                        )
-                        .background(Color.White, RoundedCornerShape(22.dp))
-                        .padding(horizontal = 18.dp, vertical = 16.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Nhãn tiêu đề thẻ
-                        Text(
-                            text = "TÙY CHỈNH",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = sectionLabelColor,
-                            letterSpacing = 0.8.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Mục 1: Thông báo giao dịch
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(colors.lavenderContainer),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(iconMintBg, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    BellOutlineIcon(
-                                        color = forestGreenDark,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = "Thông báo giao dịch",
-                                        fontSize = 14.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = forestGreenDark
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Báo khi có thu chi mới",
-                                        fontSize = 12.sp,
-                                        color = textMuted
-                                    )
-                                }
-                            }
-
-                            // Toggle Switch
-                            CustomToggleSwitch(
-                                checked = notificationEnabled,
-                                onCheckedChange = { notificationEnabled = it },
-                                activeTrackColor = forestGreenDark,
-                                inactiveTrackColor = Color(0xFFD4DCD7)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Mục 2: Giao diện
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onThemeClicked() },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(iconMintBg, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    MoonThemeIcon(
-                                        color = forestGreenDark,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = "Giao diện",
-                                        fontSize = 14.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = forestGreenDark
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Sáng · Màu xanh dịu",
-                                        fontSize = 12.sp,
-                                        color = textMuted
-                                    )
-                                }
-                            }
-
-                            ChevronRightIcon(
-                                color = chevronColor,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Mục 3: Đơn vị tiền tệ
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onCurrencyClicked() },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(iconMintBg, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CashCurrencyIcon(
-                                        color = forestGreenDark,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = "Đơn vị tiền tệ",
-                                        fontSize = 14.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = forestGreenDark
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Việt Nam Đồng (đ)",
-                                        fontSize = 12.sp,
-                                        color = textMuted
-                                    )
-                                }
-                            }
-
-                            ChevronRightIcon(
-                                color = chevronColor,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // ====================== 5. THẺ BẢO MẬT & HỖ TRỢ ======================
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(
-                            elevation = 2.dp,
-                            shape = RoundedCornerShape(22.dp),
-                            ambientColor = Color.Black.copy(alpha = 0.04f),
-                            spotColor = Color.Black.copy(alpha = 0.06f)
-                        )
-                        .background(Color.White, RoundedCornerShape(22.dp))
-                        .padding(horizontal = 18.dp, vertical = 16.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Nhãn tiêu đề thẻ
-                        Text(
-                            text = "BẢO MẬT & HỖ TRỢ",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = sectionLabelColor,
-                            letterSpacing = 0.8.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Mục 1: Bảo mật tài khoản
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSecurityClicked() },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(iconMintBg, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    ShieldCheckIcon(
-                                        color = forestGreenDark,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = "Bảo mật tài khoản",
-                                        fontSize = 14.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = forestGreenDark
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Mật khẩu và sinh trắc học",
-                                        fontSize = 12.sp,
-                                        color = textMuted
-                                    )
-                                }
-                            }
-
-                            ChevronRightIcon(
-                                color = chevronColor,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Mục 2: Trung tâm trợ giúp
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onHelpClicked() },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(iconMintBg, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    HelpCircleIcon(
-                                        color = forestGreenDark,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Text(
-                                    text = "Trung tâm trợ giúp",
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = forestGreenDark
+                                Icon(
+                                    imageVector = Icons.Rounded.NotificationsNone,
+                                    contentDescription = null,
+                                    tint = colors.onLavenderContainer,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
 
-                            ChevronRightIcon(
-                                color = chevronColor,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
+                            Spacer(modifier = Modifier.width(12.dp))
 
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Mục 3: Đăng xuất
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onLogoutClicked() },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(logoutRedBg, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    LogoutIcon(
-                                        color = logoutRedText,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
+                            Column {
                                 Text(
-                                    text = "Đăng xuất",
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = logoutRedText
+                                    text = "Thông báo giao dịch",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = colors.textPrimary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Báo khi có thu chi mới",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textMuted
                                 )
                             }
-
-                            ChevronRightIcon(
-                                color = chevronColor,
-                                modifier = Modifier.size(14.dp)
-                            )
                         }
+
+                        Switch(
+                            checked = notificationEnabled,
+                            onCheckedChange = { notificationEnabled = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = colors.primaryLavender,
+                                uncheckedThumbColor = colors.textMuted,
+                                uncheckedTrackColor = colors.divider
+                            )
+                        )
                     }
+
+                    ProfileSectionDivider()
+
+                    ProfileMenuRow(
+                        icon = Icons.Rounded.Palette,
+                        iconBg = colors.lavenderContainer,
+                        iconTint = colors.onLavenderContainer,
+                        title = "Giao diện",
+                        subtitle = if (colors.isDark) "Tối · Lavender Organic" else "Sáng · Lavender Pastel",
+                        onClick = onThemeClicked
+                    )
+
+                    ProfileSectionDivider()
+
+                    ProfileMenuRow(
+                        icon = Icons.Rounded.CurrencyExchange,
+                        iconBg = colors.mintContainer,
+                        iconTint = colors.mintDeep,
+                        title = "Đơn vị tiền tệ",
+                        subtitle = "Việt Nam Đồng (đ)",
+                        onClick = onCurrencyClicked
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(if (showBottomBar) 24.dp else 108.dp))
-                if (!showBottomBar) {
+                // 6. BẢO MẬT & HỖ TRỢ
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    hazeState = hazeState,
+                    contentPadding = PaddingValues(18.dp)
+                ) {
+                    SectionCaption(text = "BẢO MẬT & HỖ TRỢ")
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    ProfileMenuRow(
+                        icon = Icons.Rounded.Shield,
+                        iconBg = colors.lavenderContainer,
+                        iconTint = colors.onLavenderContainer,
+                        title = "Bảo mật tài khoản",
+                        subtitle = "Mật khẩu và sinh trắc học",
+                        onClick = onSecurityClicked
+                    )
+
+                    ProfileSectionDivider()
+
+                    ProfileMenuRow(
+                        icon = Icons.AutoMirrored.Rounded.HelpOutline,
+                        iconBg = colors.sky.copy(alpha = if (colors.isDark) 0.22f else 0.16f),
+                        iconTint = colors.sky,
+                        title = "Trung tâm trợ giúp",
+                        subtitle = "Hướng dẫn sử dụng Spendly",
+                        onClick = onHelpClicked
+                    )
+
+                    ProfileSectionDivider()
+
+                    ProfileMenuRow(
+                        icon = Icons.AutoMirrored.Rounded.Logout,
+                        iconBg = colors.coralContainer,
+                        iconTint = colors.coralDeep,
+                        title = "Đăng xuất",
+                        titleColor = colors.coralDeep,
+                        subtitle = null,
+                        onClick = onLogoutClicked
+                    )
+                }
+
+                if (showBottomBar) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(108.dp))
                     Spacer(modifier = Modifier.navigationBarsPadding())
                 }
             }
 
-            // ====================== 6. THANH ĐIỀU HƯỚNG ĐÁY ======================
             if (showBottomBar) {
-                ProfileBottomNavBar(
+                ProfileLavenderBottomNavBar(
                     selectedTab = BottomNavTab.PROFILE,
+                    hazeState = hazeState,
                     onTabSelected = onNavTabSelected
                 )
             }
@@ -693,733 +497,247 @@ fun ProfileScreen(
     }
 }
 
-/**
- * Thanh điều hướng đáy đồng bộ với hệ thống SpendTogether
- */
 @Composable
-private fun ProfileBottomNavBar(
+private fun SectionCaption(text: String) {
+    val colors = MaterialTheme.spendlyColors
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp
+        ),
+        color = colors.deepLavender
+    )
+}
+
+@Composable
+private fun ProfileSectionDivider() {
+    val colors = MaterialTheme.spendlyColors
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = 12.dp),
+        thickness = 0.8.dp,
+        color = colors.divider.copy(alpha = 0.7f)
+    )
+}
+
+@Composable
+private fun ProfileMenuRow(
+    icon: ImageVector,
+    iconBg: Color,
+    iconTint: Color,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit,
+    titleColor: Color = MaterialTheme.spendlyColors.textPrimary
+) {
+    val colors = MaterialTheme.spendlyColors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(iconBg),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = titleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = colors.textMuted,
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun ProfileLavenderBottomNavBar(
     selectedTab: BottomNavTab,
+    hazeState: HazeState,
     onTabSelected: (BottomNavTab) -> Unit
 ) {
-    val activeColor = Color(0xFF14382C)
-    val inactiveColor = Color(0xFF7F8E85)
-    val activePillBg = Color(0xFFCBE7D7)
-
-    Surface(
-        color = Color(0xFFF5F3EC),
-        shadowElevation = 8.dp,
-        modifier = Modifier.fillMaxWidth()
+    val colors = MaterialTheme.spendlyColors
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(vertical = 8.dp, horizontal = 12.dp),
+                .height(64.dp)
+                .spendlyGlassSurface(
+                    hazeState = hazeState,
+                    shape = SpendlyShapeTokens.BottomBar,
+                    tintColor = colors.glassContainer
+                )
+                .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Tab 1: Trang chủ
-            ProfileBottomNavItem(
+            ProfileNavItem(
                 title = "Trang chủ",
-                isSelected = selectedTab == BottomNavTab.HOME,
-                activePillBg = activePillBg,
-                activeColor = activeColor,
-                inactiveColor = inactiveColor,
-                icon = { color -> HomeNavIcon(modifier = Modifier.size(20.dp), color = color) },
-                onClick = { onTabSelected(BottomNavTab.HOME) }
+                selected = selectedTab == BottomNavTab.HOME,
+                selectedIcon = Icons.Rounded.Home,
+                unselectedIcon = Icons.Outlined.Home,
+                onClick = { onTabSelected(BottomNavTab.HOME) },
+                modifier = Modifier.weight(1f)
             )
-
-            // Tab 2: Lịch sử
-            ProfileBottomNavItem(
+            ProfileNavItem(
                 title = "Lịch sử",
-                isSelected = selectedTab == BottomNavTab.HISTORY,
-                activePillBg = activePillBg,
-                activeColor = activeColor,
-                inactiveColor = inactiveColor,
-                icon = { color -> HistoryNavIcon(modifier = Modifier.size(20.dp), color = color) },
-                onClick = { onTabSelected(BottomNavTab.HISTORY) }
+                selected = selectedTab == BottomNavTab.HISTORY,
+                selectedIcon = Icons.AutoMirrored.Rounded.ReceiptLong,
+                unselectedIcon = Icons.AutoMirrored.Outlined.ReceiptLong,
+                onClick = { onTabSelected(BottomNavTab.HISTORY) },
+                modifier = Modifier.weight(1f)
             )
-
-            // Tab 3: Báo cáo
-            ProfileBottomNavItem(
+            ProfileNavItem(
                 title = "Báo cáo",
-                isSelected = selectedTab == BottomNavTab.REPORTS,
-                activePillBg = activePillBg,
-                activeColor = activeColor,
-                inactiveColor = inactiveColor,
-                icon = { color -> ReportsNavIcon(modifier = Modifier.size(20.dp), color = color) },
-                onClick = { onTabSelected(BottomNavTab.REPORTS) }
+                selected = selectedTab == BottomNavTab.REPORTS,
+                selectedIcon = Icons.Rounded.BarChart,
+                unselectedIcon = Icons.Outlined.BarChart,
+                onClick = { onTabSelected(BottomNavTab.REPORTS) },
+                modifier = Modifier.weight(1f)
             )
-
-            // Tab 4: Cá nhân (Active)
-            ProfileBottomNavItem(
+            ProfileNavItem(
                 title = "Cá nhân",
-                isSelected = selectedTab == BottomNavTab.PROFILE,
-                activePillBg = activePillBg,
-                activeColor = activeColor,
-                inactiveColor = inactiveColor,
-                icon = { color -> ProfileNavIcon(modifier = Modifier.size(20.dp), color = color) },
-                onClick = { onTabSelected(BottomNavTab.PROFILE) }
+                selected = selectedTab == BottomNavTab.PROFILE,
+                selectedIcon = Icons.Rounded.Person,
+                unselectedIcon = Icons.Outlined.Person,
+                onClick = { onTabSelected(BottomNavTab.PROFILE) },
+                modifier = Modifier.weight(1f)
             )
         }
     }
 }
 
 @Composable
-private fun ProfileBottomNavItem(
+private fun ProfileNavItem(
     title: String,
-    isSelected: Boolean,
-    activePillBg: Color,
-    activeColor: Color,
-    inactiveColor: Color,
-    icon: @Composable (Color) -> Unit,
-    onClick: () -> Unit
+    selected: Boolean,
+    selectedIcon: ImageVector,
+    unselectedIcon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onClick() }
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(activePillBg)
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                icon(activeColor)
-            }
-        } else {
-            Box(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                icon(inactiveColor)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(2.dp))
-
-        Text(
-            text = title,
-            fontSize = 11.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = if (isSelected) activeColor else inactiveColor
-        )
+    val colors = MaterialTheme.spendlyColors
+    val activeColor = if (colors.isDark) colors.primaryLavender else colors.deepLavender
+    val tint = if (selected) activeColor else colors.textMuted
+    val pillBg = if (selected) {
+        colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.42f else 0.85f)
+    } else {
+        Color.Transparent
     }
-}
+    val interactionSource = remember { MutableInteractionSource() }
 
-/**
- * Công tắc Toggle Switch tùy biến
- */
-@Composable
-private fun CustomToggleSwitch(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    activeTrackColor: Color,
-    inactiveTrackColor: Color
-) {
-    val trackWidth = 50.dp
-    val trackHeight = 28.dp
-    val thumbSize = 22.dp
-    val thumbPadding = 3.dp
-
-    val trackColor by animateColorAsState(
-        targetValue = if (checked) activeTrackColor else inactiveTrackColor,
-        animationSpec = tween(durationMillis = 200),
-        label = "switch_track_color"
-    )
-
-    val thumbOffset by animateDpAsState(
-        targetValue = if (checked) trackWidth - thumbSize - thumbPadding else thumbPadding,
-        animationSpec = tween(durationMillis = 200),
-        label = "switch_thumb_offset"
-    )
-
-    Box(
-        modifier = Modifier
-            .size(width = trackWidth, height = trackHeight)
-            .clip(CircleShape)
-            .background(trackColor)
+    Column(
+        modifier = modifier
+            .clip(SpendlyShapeTokens.CardMedium)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onCheckedChange(!checked) },
-        contentAlignment = Alignment.CenterStart
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick
+            )
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
         Box(
             modifier = Modifier
-                .padding(start = thumbOffset)
-                .size(thumbSize)
-                .shadow(elevation = 2.dp, shape = CircleShape)
-                .background(Color.White, CircleShape)
-        )
-    }
-}
-
-// =========================================================================
-// CUSTOM CANVAS ICONS (Vẽ tự thân 100%, không phụ thuộc tài nguyên XML ngoài)
-// =========================================================================
-
-/**
- * Icon mã QR (QR Code Icon)
- */
-@Composable
-private fun QrCodeIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        // Khung góc trên trái
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.14f, h * 0.14f),
-            size = Size(w * 0.30f, h * 0.30f),
-            cornerRadius = CornerRadius(2.dp.toPx()),
-            style = Stroke(width = strokeWidth)
-        )
-        drawRect(
-            color = color,
-            topLeft = Offset(w * 0.22f, h * 0.22f),
-            size = Size(w * 0.14f, h * 0.14f)
-        )
-
-        // Khung góc trên phải
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.56f, h * 0.14f),
-            size = Size(w * 0.30f, h * 0.30f),
-            cornerRadius = CornerRadius(2.dp.toPx()),
-            style = Stroke(width = strokeWidth)
-        )
-        drawRect(
-            color = color,
-            topLeft = Offset(w * 0.64f, h * 0.22f),
-            size = Size(w * 0.14f, h * 0.14f)
-        )
-
-        // Khung góc dưới trái
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.14f, h * 0.56f),
-            size = Size(w * 0.30f, h * 0.30f),
-            cornerRadius = CornerRadius(2.dp.toPx()),
-            style = Stroke(width = strokeWidth)
-        )
-        drawRect(
-            color = color,
-            topLeft = Offset(w * 0.22f, h * 0.64f),
-            size = Size(w * 0.14f, h * 0.14f)
-        )
-
-        // Các khối pixel góc dưới phải
-        drawRect(
-            color = color,
-            topLeft = Offset(w * 0.56f, h * 0.56f),
-            size = Size(w * 0.12f, h * 0.12f)
-        )
-        drawRect(
-            color = color,
-            topLeft = Offset(w * 0.74f, h * 0.56f),
-            size = Size(w * 0.12f, h * 0.12f)
-        )
-        drawRect(
-            color = color,
-            topLeft = Offset(w * 0.56f, h * 0.74f),
-            size = Size(w * 0.12f, h * 0.12f)
-        )
-        drawRect(
-            color = color,
-            topLeft = Offset(w * 0.74f, h * 0.74f),
-            size = Size(w * 0.12f, h * 0.12f)
-        )
-    }
-}
-
-/**
- * Icon cây bút chì chỉnh sửa (Pencil Edit Icon)
- */
-@Composable
-private fun PencilEditIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        val pencilPath = Path().apply {
-            moveTo(w * 0.22f, h * 0.78f)
-            lineTo(w * 0.20f, h * 0.82f)
-            lineTo(w * 0.32f, h * 0.80f)
-            lineTo(w * 0.78f, h * 0.34f)
-            lineTo(w * 0.66f, h * 0.22f)
-            close()
+                .clip(SpendlyShapeTokens.Pill)
+                .background(pillBg)
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (selected) selectedIcon else unselectedIcon,
+                contentDescription = title,
+                tint = tint,
+                modifier = Modifier.size(20.dp)
+            )
         }
-
-        drawPath(
-            path = pencilPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+            ),
+            color = tint,
+            maxLines = 1
         )
-
-        drawLine(
-            color = color,
-            start = Offset(w * 0.56f, h * 0.32f),
-            end = Offset(w * 0.68f, h * 0.44f),
-            strokeWidth = strokeWidth,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-/**
- * Icon ngôi nhà có trái tim (Home Heart Icon)
- */
-@Composable
-private fun HomeHeartIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        // Khung nhà
-        val housePath = Path().apply {
-            moveTo(w * 0.5f, h * 0.18f)
-            lineTo(w * 0.82f, h * 0.44f)
-            lineTo(w * 0.78f, h * 0.82f)
-            lineTo(w * 0.22f, h * 0.82f)
-            lineTo(w * 0.18f, h * 0.44f)
-            close()
-        }
-
-        drawPath(
-            path = housePath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Trái tim nhỏ ở giữa nhà
-        val heartPath = Path().apply {
-            moveTo(w * 0.50f, h * 0.68f)
-            cubicTo(w * 0.42f, h * 0.62f, w * 0.36f, h * 0.54f, w * 0.36f, h * 0.48f)
-            cubicTo(w * 0.36f, h * 0.42f, w * 0.42f, h * 0.40f, w * 0.46f, h * 0.44f)
-            lineTo(w * 0.50f, h * 0.48f)
-            lineTo(w * 0.54f, h * 0.44f)
-            cubicTo(w * 0.58f, h * 0.40f, w * 0.64f, h * 0.42f, w * 0.64f, h * 0.48f)
-            cubicTo(w * 0.64f, h * 0.54f, w * 0.58f, h * 0.62f, w * 0.50f, h * 0.68f)
-            close()
-        }
-
-        drawPath(
-            path = heartPath,
-            color = color
-        )
-    }
-}
-
-/**
- * Icon quả chuông viền nét (Bell Outline Icon)
- */
-@Composable
-private fun BellOutlineIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        val bellPath = Path().apply {
-            moveTo(w * 0.5f, h * 0.18f)
-            cubicTo(w * 0.36f, h * 0.18f, w * 0.28f, h * 0.36f, w * 0.28f, h * 0.56f)
-            cubicTo(w * 0.28f, h * 0.68f, w * 0.22f, h * 0.74f, w * 0.22f, h * 0.78f)
-            lineTo(w * 0.78f, h * 0.78f)
-            cubicTo(w * 0.78f, h * 0.74f, w * 0.72f, h * 0.68f, w * 0.72f, h * 0.56f)
-            cubicTo(w * 0.72f, h * 0.36f, w * 0.64f, h * 0.18f, w * 0.5f, h * 0.18f)
-            close()
-        }
-        drawPath(
-            path = bellPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Quai trên
-        drawCircle(
-            color = color,
-            radius = w * 0.05f,
-            center = Offset(w * 0.5f, h * 0.14f),
-            style = Stroke(width = strokeWidth * 0.9f)
-        )
-
-        // Quả lắc
-        val clapperPath = Path().apply {
-            moveTo(w * 0.44f, h * 0.84f)
-            cubicTo(w * 0.44f, h * 0.89f, w * 0.56f, h * 0.89f, w * 0.56f, h * 0.84f)
-        }
-        drawPath(
-            path = clapperPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-        )
-    }
-}
-
-/**
- * Icon mặt trăng khuyết kèm sao (Moon Theme Icon)
- */
-@Composable
-private fun MoonThemeIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        // Mặt trăng khuyết
-        val moonPath = Path().apply {
-            moveTo(w * 0.56f, h * 0.20f)
-            cubicTo(w * 0.32f, h * 0.24f, w * 0.22f, h * 0.48f, w * 0.26f, h * 0.68f)
-            cubicTo(w * 0.30f, h * 0.84f, w * 0.48f, h * 0.90f, w * 0.66f, h * 0.84f)
-            cubicTo(w * 0.54f, h * 0.78f, w * 0.48f, h * 0.64f, w * 0.50f, h * 0.48f)
-            cubicTo(w * 0.52f, h * 0.34f, w * 0.62f, h * 0.24f, w * 0.74f, h * 0.22f)
-            cubicTo(w * 0.68f, h * 0.20f, w * 0.62f, h * 0.20f, w * 0.56f, h * 0.20f)
-            close()
-        }
-
-        drawPath(
-            path = moonPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Ngôi sao nhỏ
-        val starX = w * 0.76f
-        val starY = h * 0.42f
-        val starRadius = w * 0.08f
-        drawLine(
-            color = color,
-            start = Offset(starX, starY - starRadius),
-            end = Offset(starX, starY + starRadius),
-            strokeWidth = strokeWidth * 0.9f,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color,
-            start = Offset(starX - starRadius, starY),
-            end = Offset(starX + starRadius, starY),
-            strokeWidth = strokeWidth * 0.9f,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-/**
- * Icon đơn vị tiền tệ / tờ tiền (Cash Currency Icon)
- */
-@Composable
-private fun CashCurrencyIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        // Khung tờ tiền bo góc
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.16f, h * 0.28f),
-            size = Size(w * 0.68f, h * 0.44f),
-            cornerRadius = CornerRadius(4.dp.toPx()),
-            style = Stroke(width = strokeWidth)
-        )
-
-        // Vòng tròn trung tâm
-        drawCircle(
-            color = color,
-            radius = w * 0.11f,
-            center = Offset(w * 0.5f, h * 0.5f),
-            style = Stroke(width = strokeWidth)
-        )
-
-        // Hai chấm nhỏ hai bên
-        drawCircle(
-            color = color,
-            radius = 1.4.dp.toPx(),
-            center = Offset(w * 0.28f, h * 0.5f)
-        )
-        drawCircle(
-            color = color,
-            radius = 1.4.dp.toPx(),
-            center = Offset(w * 0.72f, h * 0.5f)
-        )
-    }
-}
-
-/**
- * Icon chiếc khiên bảo mật có dấu tích (Shield Check Icon)
- */
-@Composable
-private fun ShieldCheckIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        // Thân khiên
-        val shieldPath = Path().apply {
-            moveTo(w * 0.5f, h * 0.18f)
-            lineTo(w * 0.78f, h * 0.28f)
-            cubicTo(w * 0.78f, h * 0.58f, w * 0.66f, h * 0.76f, w * 0.5f, h * 0.86f)
-            cubicTo(w * 0.34f, h * 0.76f, w * 0.22f, h * 0.58f, w * 0.22f, h * 0.28f)
-            close()
-        }
-
-        drawPath(
-            path = shieldPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Dấu tích bên trong
-        val checkPath = Path().apply {
-            moveTo(w * 0.36f, h * 0.52f)
-            lineTo(w * 0.46f, h * 0.62f)
-            lineTo(w * 0.64f, h * 0.42f)
-        }
-        drawPath(
-            path = checkPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-    }
-}
-
-/**
- * Icon trung tâm trợ giúp / Dấu hỏi tròn (Help Circle Icon)
- */
-@Composable
-private fun HelpCircleIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        // Vòng tròn ngoài
-        drawCircle(
-            color = color,
-            radius = w * 0.38f,
-            center = Offset(w * 0.5f, h * 0.5f),
-            style = Stroke(width = strokeWidth)
-        )
-
-        // Dấu hỏi
-        val questionPath = Path().apply {
-            moveTo(w * 0.42f, h * 0.40f)
-            cubicTo(w * 0.42f, h * 0.32f, w * 0.58f, h * 0.32f, w * 0.58f, h * 0.42f)
-            cubicTo(w * 0.58f, h * 0.50f, w * 0.50f, h * 0.52f, w * 0.50f, h * 0.60f)
-        }
-        drawPath(
-            path = questionPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-        )
-
-        // Chấm tròn dấu hỏi
-        drawCircle(
-            color = color,
-            radius = 1.3.dp.toPx(),
-            center = Offset(w * 0.5f, h * 0.69f)
-        )
-    }
-}
-
-/**
- * Icon đăng xuất (Logout Icon)
- */
-@Composable
-private fun LogoutIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        // Khung cửa mở (ba cạnh)
-        val doorPath = Path().apply {
-            moveTo(w * 0.48f, h * 0.22f)
-            lineTo(w * 0.24f, h * 0.22f)
-            lineTo(w * 0.24f, h * 0.78f)
-            lineTo(w * 0.48f, h * 0.78f)
-        }
-        drawPath(
-            path = doorPath,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-
-        // Mũi tên hướng ra ngoài bên phải
-        drawLine(
-            color = color,
-            start = Offset(w * 0.40f, h * 0.50f),
-            end = Offset(w * 0.78f, h * 0.50f),
-            strokeWidth = strokeWidth,
-            cap = StrokeCap.Round
-        )
-
-        drawLine(
-            color = color,
-            start = Offset(w * 0.64f, h * 0.36f),
-            end = Offset(w * 0.78f, h * 0.50f),
-            strokeWidth = strokeWidth,
-            cap = StrokeCap.Round
-        )
-
-        drawLine(
-            color = color,
-            start = Offset(w * 0.64f, h * 0.64f),
-            end = Offset(w * 0.78f, h * 0.50f),
-            strokeWidth = strokeWidth,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-/**
- * Icon mũi tên chevron phải `>`
- */
-@Composable
-private fun ChevronRightIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.8.dp.toPx()
-
-        val path = Path().apply {
-            moveTo(w * 0.32f, h * 0.22f)
-            lineTo(w * 0.68f, h * 0.50f)
-            lineTo(w * 0.32f, h * 0.78f)
-        }
-        drawPath(
-            path = path,
-            color = color,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-    }
-}
-
-// Icons dùng chung cho Bottom Navigation Bar
-@Composable
-private fun HomeNavIcon(modifier: Modifier = Modifier, color: Color) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        val path = Path().apply {
-            moveTo(w * 0.5f, h * 0.18f)
-            lineTo(w * 0.84f, h * 0.48f)
-            lineTo(w * 0.76f, h * 0.82f)
-            lineTo(w * 0.24f, h * 0.82f)
-            lineTo(w * 0.16f, h * 0.48f)
-            close()
-        }
-        drawPath(path, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    }
-}
-
-@Composable
-private fun HistoryNavIcon(modifier: Modifier = Modifier, color: Color) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        val path = Path().apply {
-            moveTo(w * 0.22f, h * 0.2f)
-            lineTo(w * 0.78f, h * 0.2f)
-            lineTo(w * 0.78f, h * 0.8f)
-            lineTo(w * 0.68f, h * 0.74f)
-            lineTo(w * 0.58f, h * 0.8f)
-            lineTo(w * 0.48f, h * 0.74f)
-            lineTo(w * 0.38f, h * 0.8f)
-            lineTo(w * 0.22f, h * 0.74f)
-            close()
-        }
-        drawPath(path, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        drawLine(color = color, start = Offset(w * 0.34f, h * 0.38f), end = Offset(w * 0.66f, h * 0.38f), strokeWidth = strokeWidth, cap = StrokeCap.Round)
-        drawLine(color = color, start = Offset(w * 0.34f, h * 0.52f), end = Offset(w * 0.56f, h * 0.52f), strokeWidth = strokeWidth, cap = StrokeCap.Round)
-    }
-}
-
-@Composable
-private fun ReportsNavIcon(modifier: Modifier = Modifier, color: Color) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        drawCircle(color = color, radius = w * 0.36f, center = Offset(w * 0.5f, h * 0.5f), style = Stroke(width = strokeWidth))
-        drawLine(color = color, start = Offset(w * 0.5f, h * 0.5f), end = Offset(w * 0.5f, h * 0.16f), strokeWidth = strokeWidth, cap = StrokeCap.Round)
-        drawLine(color = color, start = Offset(w * 0.5f, h * 0.5f), end = Offset(w * 0.78f, h * 0.64f), strokeWidth = strokeWidth, cap = StrokeCap.Round)
-    }
-}
-
-@Composable
-private fun ProfileNavIcon(modifier: Modifier = Modifier, color: Color) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeWidth = 1.6.dp.toPx()
-
-        drawCircle(color = color, radius = w * 0.2f, center = Offset(w * 0.5f, h * 0.34f), style = Stroke(width = strokeWidth))
-        val body = Path().apply {
-            moveTo(w * 0.24f, h * 0.80f)
-            cubicTo(w * 0.26f, h * 0.60f, w * 0.38f, h * 0.56f, w * 0.50f, h * 0.56f)
-            cubicTo(w * 0.62f, h * 0.56f, w * 0.74f, h * 0.60f, w * 0.76f, h * 0.80f)
-        }
-        drawPath(body, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round))
     }
 }
 
 @Preview(
-    name = "15 · Cá nhân & Cài đặt (SpendTogether)",
+    name = "15 · Cá nhân & cài đặt Spendly (Light)",
     showBackground = true,
     showSystemUi = true
 )
 @Composable
 fun ProfileScreenPreview() {
-    Nhoms8Theme {
-        ProfileScreen()
+    SpendlyTheme(darkTheme = false) {
+        ProfileScreen(
+            personalDebtsSummary = "Bạn đang được trả 637.500 đ"
+        )
+    }
+}
+
+@Preview(
+    name = "15 · Cá nhân & cài đặt Spendly (Dark)",
+    showBackground = true,
+    showSystemUi = true
+)
+@Composable
+fun ProfileScreenDarkPreview() {
+    SpendlyTheme(darkTheme = true) {
+        ProfileScreen(
+            personalDebtsSummary = "Bạn đang nợ 232.500 đ"
+        )
     }
 }

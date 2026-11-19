@@ -2,59 +2,83 @@ package com.example.nhoms8
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.AlternateEmail
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.nhoms8.ui.theme.Nhoms8Theme
+import com.example.nhoms8.core.designsystem.GlassCard
+import com.example.nhoms8.core.designsystem.OrganicBackground
+import com.example.nhoms8.core.designsystem.SpendlyButton
+import com.example.nhoms8.core.designsystem.SpendlyButtonStyle
+import com.example.nhoms8.ui.theme.SpendlyIndigo
+import com.example.nhoms8.ui.theme.SpendlyLavender
+import com.example.nhoms8.ui.theme.SpendlyLavenderDeep
+import com.example.nhoms8.ui.theme.SpendlyShapeTokens
+import com.example.nhoms8.ui.theme.SpendlyTheme
+import com.example.nhoms8.ui.theme.spendlyColors
+import dev.chrisbanes.haze.rememberHazeState
 
 /**
  * 05 · Màn hình Đăng nhập (Login Screen)
- * Ứng dụng SpendTogether - Quản lý chi tiêu cá nhân & nhóm
+ * Ứng dụng Spendly - Quản lý chi tiêu cá nhân & nhóm
  */
 @Composable
 fun LoginScreen(
@@ -67,73 +91,63 @@ fun LoginScreen(
     onGoogleLoginClicked: () -> Unit = {},
     onAppleLoginClicked: () -> Unit = {}
 ) {
-    // Trạng thái Form đăng nhập
-    var phoneInput by remember { mutableStateOf("") }
-    var passwordInput by remember { mutableStateOf("") }
-    var isPasswordVisible by remember { mutableStateOf(false) }
-    var rememberMe by remember { mutableStateOf(true) }
+    val colors = MaterialTheme.spendlyColors
+    val hazeState = rememberHazeState()
 
-    // Bảng màu thiết kế ấm áp & chuẩn phong cách
-    val backgroundColor = Color(0xFFF5F3EC)      // Màu kem nhạt ấm áp (Beige)
-    val ambientSage = Color(0xFFDDEAE0)          // Màu xanh xô thơm nhạt
-    val forestGreenDark = Color(0xFF14382C)      // Xanh rêu đậm sang trọng
-    val sageGreen = Color(0xFF4A725E)            // Xanh sage điểm nhấn
-    val textMuted = Color(0xFF6B7E74)            // Màu xám trung tính
+    var emailOrPhoneInput by rememberSaveable { mutableStateOf("") }
+    var passwordInput by rememberSaveable { mutableStateOf("") }
+    var isPasswordVisible by rememberSaveable { mutableStateOf(false) }
+    var rememberMe by rememberSaveable { mutableStateOf(true) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = colors.primaryLavender,
+        unfocusedBorderColor = colors.divider,
+        focusedLabelColor = colors.deepLavender,
+        unfocusedLabelColor = colors.textMuted,
+        cursorColor = colors.deepLavender,
+        focusedContainerColor = colors.surface.copy(alpha = if (colors.isDark) 0.45f else 0.72f),
+        unfocusedContainerColor = colors.surface.copy(alpha = if (colors.isDark) 0.30f else 0.55f),
+        focusedTextColor = colors.textPrimary,
+        unfocusedTextColor = colors.textPrimary
+    )
+
+    OrganicBackground(
+        modifier = Modifier.fillMaxSize(),
+        hazeState = hazeState
     ) {
-        // 1. Họa tiết nền cong mềm mại ở góc trên phải & dưới trái
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-
-            // Mảng cong góc trên bên phải
-            drawCircle(
-                color = ambientSage,
-                radius = w * 0.44f,
-                center = Offset(w * 0.96f, h * 0.05f)
-            )
-
-            // Mảng cong lớn góc dưới bên trái
-            drawCircle(
-                color = ambientSage,
-                radius = w * 0.58f,
-                center = Offset(w * 0.04f, h * 0.88f)
-            )
-        }
-
-        // 2. Toàn bộ nội dung màn hình Đăng nhập
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 22.dp),
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // ====================== 1. BRAND HEADER (LOGO & TÊN APP) ======================
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                // 1. BRAND HEADER
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Start
                 ) {
-                    // Squircle App Icon
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(46.dp)
                             .shadow(
-                                elevation = 4.dp,
-                                shape = RoundedCornerShape(14.dp),
-                                spotColor = Color.Black.copy(alpha = 0.2f)
+                                elevation = 8.dp,
+                                shape = RoundedCornerShape(15.dp),
+                                ambientColor = SpendlyLavenderDeep.copy(alpha = 0.35f),
+                                spotColor = SpendlyIndigo.copy(alpha = 0.35f)
                             )
+                            .clip(RoundedCornerShape(15.dp))
                             .background(
-                                color = forestGreenDark,
-                                shape = RoundedCornerShape(14.dp)
+                                Brush.linearGradient(
+                                    colors = listOf(SpendlyLavender, SpendlyLavenderDeep, SpendlyIndigo)
+                                )
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -145,340 +159,312 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.width(12.dp))
 
+                    Column {
+                        Text(
+                            text = "Spendly",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = "Chi tiêu cá nhân & quỹ nhóm",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textMuted
+                        )
+                    }
+                }
+
+                // 2. HEADLINE
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "SpendTogether",
-                        fontSize = 21.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = forestGreenDark,
-                        letterSpacing = (-0.3).sp
+                        text = "Chào mừng trở lại",
+                        style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
+                        color = colors.textPrimary
+                    )
+                    Text(
+                        text = "Đăng nhập để tiếp tục theo dõi số dư, chia hóa đơn và đồng bộ quỹ nhóm.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textMuted
                     )
                 }
 
-                Spacer(modifier = Modifier.height(28.dp))
-
-                // ====================== 2. TIÊU ĐỀ & PHỤ ĐỀ ======================
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // ====================== 3. BIỂU MẪU ĐĂNG NHẬP (FORM) ======================
-                // --- Trường Số điện thoại ---
-                Text(
-                    text = "Số điện thoại",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF42564C)
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .shadow(
-                            elevation = 3.dp,
-                            shape = CircleShape,
-                            ambientColor = Color.Black.copy(alpha = 0.06f),
-                            spotColor = Color.Black.copy(alpha = 0.08f)
-                        )
-                        .background(Color.White, CircleShape)
-                        .padding(horizontal = 18.dp),
-                    contentAlignment = Alignment.CenterStart
+                // 3. FORM GLASS CARD
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    hazeState = hazeState,
+                    contentPadding = PaddingValues(18.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        PhoneOutlineIcon(
-                            color = Color(0xFF7D9488),
-                            modifier = Modifier.size(20.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        BasicTextField(
-                            value = phoneInput,
-                            onValueChange = { phoneInput = it },
-                            textStyle = TextStyle(
-                                fontSize = 15.sp,
-                                color = forestGreenDark,
-                                fontWeight = FontWeight.Normal
-                            ),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        OutlinedTextField(
+                            value = emailOrPhoneInput,
+                            onValueChange = { emailOrPhoneInput = it },
+                            label = { Text("Email hoặc số điện thoại") },
+                            placeholder = { Text("vd: hung.le@spendly.vn") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.AlternateEmail,
+                                    contentDescription = null,
+                                    tint = colors.primaryLavender
+                                )
+                            },
                             singleLine = true,
-                            cursorBrush = SolidColor(forestGreenDark),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Email,
+                                imeAction = ImeAction.Next
+                            ),
+                            shape = SpendlyShapeTokens.CardMedium,
+                            colors = fieldColors,
                             modifier = Modifier.fillMaxWidth()
                         )
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // --- Trường Mật khẩu ---
-                Text(
-                    text = "Mật khẩu",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF42564C)
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .shadow(
-                            elevation = 3.dp,
-                            shape = CircleShape,
-                            ambientColor = Color.Black.copy(alpha = 0.06f),
-                            spotColor = Color.Black.copy(alpha = 0.08f)
-                        )
-                        .background(Color.White, CircleShape)
-                        .padding(horizontal = 18.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        LockOutlineIcon(
-                            color = Color(0xFF7D9488),
-                            modifier = Modifier.size(20.dp)
-                        )
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        BasicTextField(
+                        OutlinedTextField(
                             value = passwordInput,
                             onValueChange = { passwordInput = it },
-                            textStyle = TextStyle(
-                                fontSize = 15.sp,
-                                color = forestGreenDark,
-                                fontWeight = FontWeight.Normal
-                            ),
-                            visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            label = { Text("Mật khẩu") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Lock,
+                                    contentDescription = null,
+                                    tint = colors.primaryLavender
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
+                                    Icon(
+                                        imageVector = if (isPasswordVisible) {
+                                            Icons.Rounded.VisibilityOff
+                                        } else {
+                                            Icons.Rounded.Visibility
+                                        },
+                                        contentDescription = if (isPasswordVisible) "Ẩn mật khẩu" else "Hiện mật khẩu",
+                                        tint = colors.textMuted
+                                    )
+                                }
+                            },
+                            visualTransformation = if (isPasswordVisible) {
+                                VisualTransformation.None
+                            } else {
+                                PasswordVisualTransformation()
+                            },
                             singleLine = true,
-                            cursorBrush = SolidColor(forestGreenDark),
-                            modifier = Modifier.weight(1f)
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done
+                            ),
+                            shape = SpendlyShapeTokens.CardMedium,
+                            colors = fieldColors,
+                            modifier = Modifier.fillMaxWidth()
                         )
 
-                        // Nút Hiện / Ẩn mật khẩu
-                        Text(
-                            text = if (isPasswordVisible) "Ẩn" else "Hiện",
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = sageGreen,
-                            modifier = Modifier
-                                .clickable { isPasswordVisible = !isPasswordVisible }
-                                .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
-                        )
-                    }
-                }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { rememberMe = !rememberMe }
+                                    .padding(vertical = 4.dp, horizontal = 2.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(if (rememberMe) colors.deepLavender else Color.Transparent)
+                                        .border(
+                                            width = 1.25.dp,
+                                            color = if (rememberMe) colors.deepLavender else colors.divider,
+                                            shape = RoundedCornerShape(5.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (rememberMe) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Ghi nhớ đăng nhập",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textMuted
+                                )
+                            }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // --- Tùy chọn Ghi nhớ & Quên mật khẩu ---
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Checkbox Ghi nhớ đăng nhập
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clickable { rememberMe = !rememberMe }
-                            .padding(vertical = 4.dp)
-                    ) {
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                    }
-
-                    // Nút Quên mật khẩu
-                    Text(
-                        text = "Quên mật khẩu?",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = sageGreen,
-                        modifier = Modifier
-                            .clickable { onForgotPasswordClicked(phoneInput) }
-                            .padding(vertical = 4.dp)
-                    )
-                }
-
-                if (!errorMessage.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFFFDE8E8), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        Text(
-                            text = errorMessage,
-                            fontSize = 13.sp,
-                            color = Color(0xFFC81E1E),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // ====================== 4. NÚT ĐĂNG NHẬP CHÍNH ======================
-                Button(
-                    onClick = {
-                        if (!isLoading) {
-                            onLoginSubmit(phoneInput, passwordInput)
-                            onLoginSuccess()
-                        }
-                    },
-                    enabled = !isLoading,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .shadow(
-                            elevation = 6.dp,
-                            shape = CircleShape,
-                            spotColor = forestGreenDark.copy(alpha = 0.35f)
-                        ),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = forestGreenDark,
-                        contentColor = Color.White,
-                        disabledContainerColor = forestGreenDark.copy(alpha = 0.6f),
-                        disabledContentColor = Color.White.copy(alpha = 0.8f)
-                    ),
-                    shape = CircleShape
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        if (isLoading) {
                             Text(
-                                text = "Đang xác thực Firebase...",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White
-                            )
-                        } else {
-                            RightArrowIcon(
-                                color = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Đăng nhập",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White
+                                text = "Quên mật khẩu?",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.deepLavender,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(role = Role.Button) {
+                                        onForgotPasswordClicked(emailOrPhoneInput)
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
                             )
                         }
+
+                        if (!errorMessage.isNullOrBlank()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(SpendlyShapeTokens.CardSmall)
+                                    .background(colors.coralContainer)
+                                    .border(
+                                        width = 1.dp,
+                                        color = colors.coralDeep.copy(alpha = 0.35f),
+                                        shape = SpendlyShapeTokens.CardSmall
+                                    )
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = colors.coralDeep,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = errorMessage,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    color = colors.coralDeep
+                                )
+                            }
+                        }
+
+                        SpendlyButton(
+                            text = if (isLoading) "Đang xác thực Firebase..." else "Đăng nhập",
+                            onClick = {
+                                if (!isLoading) {
+                                    onLoginSubmit(emailOrPhoneInput, passwordInput)
+                                    onLoginSuccess()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !isLoading,
+                            isLoading = isLoading,
+                            trailingIcon = if (isLoading) null else Icons.AutoMirrored.Rounded.ArrowForward,
+                            height = 52.dp
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // ====================== 5. PHÂN CÁCH HOẶC TIẾP TỤC VỚI ======================
+                // 4. SOCIAL LOGIN DIVIDER & BUTTONS
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     HorizontalDivider(
                         modifier = Modifier.weight(1f),
-                        color = Color(0xFFDCE4DE),
+                        color = colors.divider,
                         thickness = 1.dp
                     )
                     Text(
                         text = "hoặc tiếp tục với",
-                        fontSize = 12.5.sp,
-                        color = Color(0xFF8B9B92),
-                        modifier = Modifier.padding(horizontal = 14.dp)
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        modifier = Modifier.padding(horizontal = 12.dp)
                     )
                     HorizontalDivider(
                         modifier = Modifier.weight(1f),
-                        color = Color(0xFFDCE4DE),
+                        color = colors.divider,
                         thickness = 1.dp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // ====================== 6. NÚT MẠNG XÃ HỘI (GOOGLE & APPLE) ======================
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Nút Google
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .shadow(
-                                elevation = 4.dp,
-                                shape = CircleShape,
-                                ambientColor = Color.Black.copy(alpha = 0.06f),
-                                spotColor = Color.Black.copy(alpha = 0.08f)
+                    SocialGlassButton(
+                        label = "Google",
+                        onClick = onGoogleLoginClicked,
+                        hazeState = hazeState,
+                        leadingContent = { GoogleIcon(modifier = Modifier.size(18.dp)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    SocialGlassButton(
+                        label = "Apple",
+                        onClick = onAppleLoginClicked,
+                        hazeState = hazeState,
+                        leadingContent = {
+                            AppleIcon(
+                                color = colors.textPrimary,
+                                modifier = Modifier.size(18.dp)
                             )
-                            .background(Color.White, CircleShape)
-                            .clickable { onGoogleLoginClicked() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            GoogleIcon(modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Google",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF1E293B)
-                            )
-                        }
-                    }
-
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
 
-            // ====================== 7. CHÂN TRANG: ĐĂNG KÝ NGAY ======================
+            // 5. FOOTER
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 20.dp),
+                    .padding(top = 20.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Chưa có tài khoản? ",
-                    fontSize = 14.sp,
-                    color = textMuted
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textMuted
                 )
                 Text(
                     text = "Đăng ký ngay",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = forestGreenDark,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = colors.deepLavender,
                     modifier = Modifier
-                        .clickable { onRegisterClicked() }
-                        .padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClick = onRegisterClicked)
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
                 )
             }
         }
     }
 }
 
-/**
- * Biểu tượng mầm cây mini màu trắng sắc nét
- */
+@Composable
+private fun SocialGlassButton(
+    label: String,
+    onClick: () -> Unit,
+    hazeState: dev.chrisbanes.haze.HazeState,
+    leadingContent: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.spendlyColors
+    GlassCard(
+        modifier = modifier
+            .height(50.dp)
+            .clip(SpendlyShapeTokens.Pill)
+            .clickable(role = Role.Button, onClick = onClick),
+        hazeState = hazeState,
+        shape = SpendlyShapeTokens.Pill,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            leadingContent()
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.textPrimary
+            )
+        }
+    }
+}
+
 @Composable
 private fun SproutMiniIcon(
     color: Color,
@@ -489,7 +475,6 @@ private fun SproutMiniIcon(
         val h = size.height
         val stroke = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-        // Đường gạch đáy mầm
         drawLine(
             color = color,
             start = Offset(w * 0.30f, h * 0.82f),
@@ -497,14 +482,12 @@ private fun SproutMiniIcon(
             strokeWidth = 1.8.dp.toPx(),
             cap = StrokeCap.Round
         )
-        // Thân cây
         val stem = Path().apply {
             moveTo(w * 0.50f, h * 0.82f)
             cubicTo(w * 0.50f, h * 0.55f, w * 0.49f, h * 0.42f, w * 0.49f, h * 0.28f)
         }
         drawPath(stem, color = color, style = stroke)
 
-        // Lá trái
         val leftLeaf = Path().apply {
             moveTo(w * 0.50f, h * 0.55f)
             cubicTo(w * 0.28f, h * 0.52f, w * 0.26f, h * 0.38f, w * 0.46f, h * 0.38f)
@@ -512,7 +495,6 @@ private fun SproutMiniIcon(
         }
         drawPath(leftLeaf, color = color, style = stroke)
 
-        // Lá phải
         val rightLeaf = Path().apply {
             moveTo(w * 0.49f, h * 0.38f)
             cubicTo(w * 0.58f, h * 0.35f, w * 0.74f, h * 0.20f, w * 0.64f, h * 0.16f)
@@ -522,86 +504,6 @@ private fun SproutMiniIcon(
     }
 }
 
-/**
- * Biểu tượng ống nghe điện thoại dạng outline
- */
-@Composable
-private fun PhoneOutlineIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        val phonePath = Path().apply {
-            moveTo(w * 0.28f, h * 0.22f)
-            cubicTo(w * 0.22f, h * 0.28f, w * 0.20f, h * 0.36f, w * 0.28f, h * 0.50f)
-            cubicTo(w * 0.38f, h * 0.68f, w * 0.54f, h * 0.82f, w * 0.70f, h * 0.86f)
-            cubicTo(w * 0.78f, h * 0.88f, w * 0.86f, h * 0.82f, w * 0.88f, h * 0.74f)
-            lineTo(w * 0.78f, h * 0.60f)
-            cubicTo(w * 0.74f, h * 0.56f, w * 0.68f, h * 0.58f, w * 0.64f, h * 0.62f)
-            lineTo(w * 0.60f, h * 0.66f)
-            cubicTo(w * 0.48f, h * 0.60f, w * 0.40f, h * 0.52f, w * 0.34f, h * 0.40f)
-            lineTo(w * 0.38f, h * 0.36f)
-            cubicTo(w * 0.42f, h * 0.32f, w * 0.44f, h * 0.26f, w * 0.40f, h * 0.22f)
-            close()
-        }
-        drawPath(phonePath, color = color, style = stroke)
-    }
-}
-
-/**
- * Biểu tượng ổ khóa dạng outline
- */
-@Composable
-private fun LockOutlineIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        // Quai khóa
-        val shackle = Path().apply {
-            moveTo(w * 0.32f, h * 0.48f)
-            lineTo(w * 0.32f, h * 0.32f)
-            cubicTo(w * 0.32f, h * 0.16f, w * 0.68f, h * 0.16f, w * 0.68f, h * 0.32f)
-            lineTo(w * 0.68f, h * 0.48f)
-        }
-        drawPath(shackle, color = color, style = stroke)
-
-        // Thân khóa
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(w * 0.22f, h * 0.46f),
-            size = Size(w * 0.56f, h * 0.44f),
-            cornerRadius = CornerRadius(4.dp.toPx()),
-            style = stroke
-        )
-
-        // Lỗ khóa nhỏ
-        drawCircle(
-            color = color,
-            radius = 2.dp.toPx(),
-            center = Offset(w * 0.50f, h * 0.64f)
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.50f, h * 0.66f),
-            end = Offset(w * 0.50f, h * 0.74f),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-/**
- * Logo Google nhiều màu chuẩn xác
- */
 @Composable
 private fun GoogleIcon(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -610,10 +512,8 @@ private fun GoogleIcon(modifier: Modifier = Modifier) {
         val cx = w / 2f
         val cy = h / 2f
         val r = w * 0.44f
-        val stroke = 3.dp.toPx()
+        val stroke = 2.8.dp.toPx()
 
-        // Đường vòng cung Google (Đỏ, Vàng, Xanh lục, Xanh lam)
-        // Cung xanh lục (dưới)
         drawArc(
             color = Color(0xFF34A853),
             startAngle = 45f,
@@ -623,7 +523,6 @@ private fun GoogleIcon(modifier: Modifier = Modifier) {
             size = Size(r * 2, r * 2),
             style = Stroke(width = stroke, cap = StrokeCap.Round)
         )
-        // Cung vàng (trái dưới)
         drawArc(
             color = Color(0xFFFBBC05),
             startAngle = 135f,
@@ -633,7 +532,6 @@ private fun GoogleIcon(modifier: Modifier = Modifier) {
             size = Size(r * 2, r * 2),
             style = Stroke(width = stroke, cap = StrokeCap.Round)
         )
-        // Cung đỏ (trên)
         drawArc(
             color = Color(0xFFEA4335),
             startAngle = 225f,
@@ -643,7 +541,6 @@ private fun GoogleIcon(modifier: Modifier = Modifier) {
             size = Size(r * 2, r * 2),
             style = Stroke(width = stroke, cap = StrokeCap.Round)
         )
-        // Cung & thanh ngang xanh lam (phải)
         drawArc(
             color = Color(0xFF4285F4),
             startAngle = 315f,
@@ -663,9 +560,6 @@ private fun GoogleIcon(modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Logo Apple quả táo cắn dở thanh lịch
- */
 @Composable
 private fun AppleIcon(
     color: Color,
@@ -675,74 +569,48 @@ private fun AppleIcon(
         val w = size.width
         val h = size.height
         val cx = w * 0.50f
-        val cy = h * 0.55f
+        val cy = h * 0.56f
 
-        // Lá quả táo
-
-
-        // Thân quả táo
-        val appleBody = Path().apply {
+        val appleLeaf = Path().apply {
             moveTo(cx, cy - 7.dp.toPx())
-            cubicTo(cx + 6.dp.toPx(), cy - 7.dp.toPx(), cx + 8.dp.toPx(), cy - 2.dp.toPx(), cx + 8.dp.toPx(), cy + 3.dp.toPx())
-            cubicTo(cx + 8.dp.toPx(), cy + 8.dp.toPx(), cx + 4.dp.toPx(), cy + 9.dp.toPx(), cx, cy + 9.dp.toPx())
-            cubicTo(cx - 4.dp.toPx(), cy + 9.dp.toPx(), cx - 8.dp.toPx(), cy + 8.dp.toPx(), cx - 8.dp.toPx(), cy + 3.dp.toPx())
-            cubicTo(cx - 8.dp.toPx(), cy - 2.dp.toPx(), cx - 6.dp.toPx(), cy - 7.dp.toPx(), cx, cy - 7.dp.toPx())
+            cubicTo(cx + 1.dp.toPx(), cy - 10.dp.toPx(), cx + 4.dp.toPx(), cy - 10.dp.toPx(), cx + 4.dp.toPx(), cy - 8.dp.toPx())
+            cubicTo(cx + 3.dp.toPx(), cy - 6.dp.toPx(), cx + 1.dp.toPx(), cy - 6.dp.toPx(), cx, cy - 7.dp.toPx())
+            close()
+        }
+        drawPath(appleLeaf, color = color)
+
+        val appleBody = Path().apply {
+            moveTo(cx, cy - 6.dp.toPx())
+            cubicTo(cx + 5.5.dp.toPx(), cy - 6.dp.toPx(), cx + 7.5.dp.toPx(), cy - 1.5.dp.toPx(), cx + 7.5.dp.toPx(), cy + 3.dp.toPx())
+            cubicTo(cx + 7.5.dp.toPx(), cy + 7.5.dp.toPx(), cx + 3.5.dp.toPx(), cy + 8.5.dp.toPx(), cx, cy + 8.5.dp.toPx())
+            cubicTo(cx - 3.5.dp.toPx(), cy + 8.5.dp.toPx(), cx - 7.5.dp.toPx(), cy + 7.5.dp.toPx(), cx - 7.5.dp.toPx(), cy + 3.dp.toPx())
+            cubicTo(cx - 7.5.dp.toPx(), cy - 1.5.dp.toPx(), cx - 5.5.dp.toPx(), cy - 6.dp.toPx(), cx, cy - 6.dp.toPx())
             close()
         }
         drawPath(appleBody, color = color)
     }
 }
 
-/**
- * Biểu tượng mũi tên chỉ sang phải
- */
-@Composable
-private fun RightArrowIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = 2.dp.toPx()
-
-        drawLine(
-            color = color,
-            start = Offset(w * 0.15f, h * 0.50f),
-            end = Offset(w * 0.82f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.55f, h * 0.22f),
-            end = Offset(w * 0.82f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.55f, h * 0.78f),
-            end = Offset(w * 0.82f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-/**
- * Preview hiển thị chuẩn xác giao diện điện thoại trong Android Studio
- */
 @Preview(
-    name = "05 · Đăng nhập (SpendTogether)",
+    name = "05 · Đăng nhập Spendly (Light)",
     showBackground = true,
     showSystemUi = true
 )
 @Composable
 fun LoginScreenPreview() {
-    Nhoms8Theme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            LoginScreen()
-        }
+    SpendlyTheme(darkTheme = false) {
+        LoginScreen()
+    }
+}
+
+@Preview(
+    name = "05 · Đăng nhập Spendly (Dark)",
+    showBackground = true,
+    showSystemUi = true
+)
+@Composable
+fun LoginScreenDarkPreview() {
+    SpendlyTheme(darkTheme = true) {
+        LoginScreen(errorMessage = "Sai mật khẩu, vui lòng kiểm tra lại.")
     }
 }

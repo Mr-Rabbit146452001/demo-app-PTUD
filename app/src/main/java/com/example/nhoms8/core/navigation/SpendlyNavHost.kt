@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -62,6 +65,8 @@ import com.example.nhoms8.domain.model.SpendlyUser
 import com.example.nhoms8.feature.auth.ForgotPasswordScreen
 import com.example.nhoms8.feature.budgets.BudgetManagementScreen
 import com.example.nhoms8.feature.budgets.BudgetViewModel
+import com.example.nhoms8.feature.chatbot.FinSproutChatPopup
+import com.example.nhoms8.feature.chatbot.FinSproutFloatingBubble
 import com.example.nhoms8.feature.groups.CreateGroupScreen
 import com.example.nhoms8.feature.groups.GroupDetailScreen
 import com.example.nhoms8.feature.groups.GroupDetailUiState
@@ -153,6 +158,7 @@ fun SpendlyNavHost(
 
     val bottomBarHazeState = rememberHazeState()
     var showAddSheet by remember { mutableStateOf(false) }
+    var isChatPopupOpen by remember { mutableStateOf(false) }
 
     // Trạng thái bộ lọc Lịch sử giao dịch & Báo cáo tài chính
     val defaultMonthYearLabel = remember { "${currentMonthLabel()}/${currentYear()}" }
@@ -582,7 +588,7 @@ fun SpendlyNavHost(
                             }
                         },
                         onChatbotClicked = {
-                            navController.navigate(SpendlyRoutes.CHATBOT)
+                            isChatPopupOpen = true
                         },
                         showBottomBar = false,
                         onReportsClicked = {
@@ -847,7 +853,7 @@ fun SpendlyNavHost(
                         },
                         onAiChatClick = { gId ->
                             activateGroupEverywhere(gId, groupViewModel, spendTogetherViewModel)
-                            navController.navigate(SpendlyRoutes.CHATBOT)
+                            isChatPopupOpen = true
                         },
                         onExpenseClicked = { expId ->
                             navController.navigate(SpendlyRoutes.expenseDetail(groupId, expId))
@@ -989,6 +995,8 @@ fun SpendlyNavHost(
                 // ==================== FINSPROUT AI CHATBOT ====================
 
                 composable(SpendlyRoutes.CHATBOT) {
+                    val resolvedActiveGroupName = activeGroupDetail.group?.name
+                        ?: spendTogetherUiState.activeGroupName
                     ChatbotScreen(
                         messages = spendTogetherUiState.chatMessages,
                         isTyping = spendTogetherUiState.isChatbotTyping,
@@ -1004,7 +1012,8 @@ fun SpendlyNavHost(
                                 Toast.LENGTH_SHORT
                             ).show()
                         },
-                        onClearChat = spendTogetherViewModel::clearChatHistory
+                        onClearChat = spendTogetherViewModel::clearChatHistory,
+                        activeGroupName = resolvedActiveGroupName
                     )
                 }
 
@@ -1358,6 +1367,46 @@ fun SpendlyNavHost(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+
+        val showChatbotEntry = selectedTopLevelTab != null || currentRoute == SpendlyRoutes.GROUP_DETAIL
+        if (showChatbotEntry && !showAddSheet && !isChatPopupOpen) {
+            FinSproutFloatingBubble(
+                onClick = { isChatPopupOpen = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(
+                        end = 16.dp,
+                        bottom = if (selectedTopLevelTab != null) 104.dp else 20.dp
+                    )
+            )
+        }
+
+        val popupGroupName = activeGroupDetail.group?.name ?: spendTogetherUiState.activeGroupName
+        FinSproutChatPopup(
+            visible = isChatPopupOpen,
+            messages = spendTogetherUiState.chatMessages,
+            isTyping = spendTogetherUiState.isChatbotTyping,
+            activeGroupName = popupGroupName,
+            hazeState = bottomBarHazeState,
+            onDismiss = { isChatPopupOpen = false },
+            onExpandFullScreen = {
+                isChatPopupOpen = false
+                navController.navigate(SpendlyRoutes.CHATBOT) {
+                    launchSingleTop = true
+                }
+            },
+            onSendMessage = spendTogetherViewModel::sendMessageToChatbot,
+            onConfirmExpense = { messageId ->
+                spendTogetherViewModel.confirmChatExpense(messageId)
+                Toast.makeText(
+                    context,
+                    "Đã lưu khoản chi vào quỹ nhóm!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            },
+            onClearChat = spendTogetherViewModel::clearChatHistory
+        )
     }
 
     if (showAddSheet) {
@@ -1380,7 +1429,7 @@ fun SpendlyNavHost(
                 if (!effectiveGroupId.isNullOrBlank()) {
                     activateGroupEverywhere(effectiveGroupId, groupViewModel, spendTogetherViewModel)
                 }
-                navController.navigate(SpendlyRoutes.CHATBOT)
+                isChatPopupOpen = true
             }
         )
     }

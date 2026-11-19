@@ -4,20 +4,17 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,11 +36,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ElevatedButton
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -58,9 +63,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -69,28 +73,46 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.nhoms8.core.designsystem.GlassCard
+import com.example.nhoms8.core.designsystem.OrganicBackground
+import com.example.nhoms8.core.designsystem.SpendlyButton
+import com.example.nhoms8.core.designsystem.spendlyGlassSurface
 import com.example.nhoms8.model.ChatExpenseProposal
 import com.example.nhoms8.model.ChatMessage
 import com.example.nhoms8.model.ChatReminderProposal
 import com.example.nhoms8.ui.theme.Nhoms8Theme
+import com.example.nhoms8.ui.theme.SpendlyIndigo
+import com.example.nhoms8.ui.theme.SpendlyLavender
+import com.example.nhoms8.ui.theme.SpendlyLavenderDeep
+import com.example.nhoms8.ui.theme.SpendlyShapeTokens
+import com.example.nhoms8.ui.theme.SpendlySky
+import com.example.nhoms8.ui.theme.SpendlyTextStyles
+import com.example.nhoms8.ui.theme.SpendlyTheme
+import com.example.nhoms8.ui.theme.spendlyColors
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.rememberHazeState
+
+internal val FIN_SPROUT_QUICK_PROMPTS = listOf(
+    "🍲 Ăn trưa 180k Hùng trả, chia đều",
+    "📊 Tình hình quỹ tháng này thế nào?",
+    "⚖️ Ai đang nợ ai trong nhóm?",
+    "💌 Nhắc nợ bạn Linh tiền đồ án",
+    "💡 Mẹo tiết kiệm chi tiêu cho nhóm"
+)
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
  * 16 · MÀN HÌNH TRỢ LÝ ẢO TÀI CHÍNH FINSPROUT (AI CHATBOT SCREEN)
- * Nhóm 08 - Lớp D23CQCI01-N - PTIT
+ * Đồng bộ hoàn toàn theo Spendly Lavender / Organic / Haze 2.1.0 Design System.
+ * Tái sử dụng các composable chia sẻ với Popup nổi trên các màn hình chính.
  * ═══════════════════════════════════════════════════════════════════════════════
- * Tính năng chính:
- * 1. Hội thoại thông minh với trợ lý AI FinSprout
- * 2. Bóc tách ngôn ngữ tự nhiên thành khoản chi với Thẻ Hành Động 1-chạm (Action Card)
- * 3. Báo cáo phân tích quỹ nhóm và cảnh báo hạn mức tức thì
- * 4. Soạn thảo tin nhắn nhắc nợ vui vẻ, khéo léo kèm nút Sao chép nhanh
- * 5. Các gợi ý câu hỏi thông minh (Quick Prompt Chips)
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatbotScreen(
     messages: List<ChatMessage> = emptyList(),
@@ -98,358 +120,445 @@ fun ChatbotScreen(
     onBackClicked: () -> Unit = {},
     onSendMessage: (String) -> Unit = {},
     onConfirmExpense: (String) -> Unit = {},
-    onClearChat: () -> Unit = {}
+    onClearChat: () -> Unit = {},
+    activeGroupName: String? = null
 ) {
     val context = LocalContext.current
+    val colors = MaterialTheme.spendlyColors
+    val hazeState = rememberHazeState()
     var inputText by remember { mutableStateOf("") }
-    val listState = rememberLazyListState()
 
-    // Bảng màu chuẩn thương hiệu SpendTogether
-    val backgroundColor = Color(0xFFF6F4EE)
-    val forestGreenDark = Color(0xFF14382C)
-    val emeraldGreen = Color(0xFF2E8B57)
-    val textMuted = Color(0xFF6E7C74)
-    val cardBackground = Color(0xFFFFFFFF)
-    val borderLight = Color(0xFFE5E2D8)
-    val sageLight = Color(0xFFDDEAE0)
-
-    // Tự động cuộn xuống tin nhắn mới nhất
-    LaunchedEffect(messages.size, isTyping) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
-    }
-
-    // Danh sách gợi ý thao tác nhanh
-    val quickPrompts = remember {
-        listOf(
-            "🍲 Ăn trưa 180k Hùng trả, chia đều",
-            "📊 Tình hình quỹ tháng này thế nào?",
-            "💌 Nhắc nợ bạn Linh tiền đồ án",
-            "☕ Cà phê họp nhóm 85k Đạt trả",
-            "💡 Mẹo tiết kiệm chi tiêu cho nhóm"
-        )
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
+    OrganicBackground(
+        modifier = Modifier.fillMaxSize(),
+        hazeState = hazeState
     ) {
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
         ) {
-            // ====================== 1. THANH TIÊU ĐỀ (TOP APP BAR) ======================
-            Surface(
-                color = cardBackground,
-                shadowElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Nút quay lại
-                        IconButton(onClick = onBackClicked) {
-                            BackArrowIcon(
-                                color = forestGreenDark,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        // Avatar FinSprout với chấm xanh trực tuyến
-                        Box(contentAlignment = Alignment.BottomEnd) {
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFFE2F0E7)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                SproutIconBot(
-                                    modifier = Modifier.size(24.dp),
-                                    color = emeraldGreen
-                                )
-                            }
-                            // Chấm xanh trạng thái trực tuyến
-                            Box(
-                                modifier = Modifier
-                                    .size(11.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF22C55E))
-                                    .border(2.dp, Color.White, CircleShape)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "FinSprout AI",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = forestGreenDark
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color(0xFFE2F4E9), RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "Gemini 2.5 Flash ✨",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = emeraldGreen
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "Trực tuyến · Sẵn sàng ghi chi tiêu & phân tích quỹ",
-                                fontSize = 12.sp,
-                                color = textMuted
-                            )
-                        }
-                    }
-
-                    // Nút làm mới / Xóa cuộc trò chuyện
-                    IconButton(
-                        onClick = {
-                            onClearChat()
-                            Toast.makeText(context, "Đã làm mới cuộc trò chuyện", Toast.LENGTH_SHORT).show()
-                        }
-                    ) {
-                        RefreshIcon(
-                            color = textMuted,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-
-            // ====================== 2. DANH SÁCH TIN NHẮN (MESSAGE LIST) ======================
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Thẻ thông tin giới thiệu trợ lý AI ở đầu trang
-                item {
-                    FinSproutIntroCard(sageLight = sageLight, forestGreenDark = forestGreenDark)
-                }
-
-                // Danh sách tin nhắn hội thoại
-                items(messages, key = { it.id }) { message ->
-                    if (message.isFromUser) {
-                        UserMessageBubble(
-                            message = message,
-                            bubbleColor = forestGreenDark
-                        )
-                    } else {
-                        BotMessageBubble(
-                            message = message,
-                            onConfirmExpense = onConfirmExpense,
-                            forestGreenDark = forestGreenDark,
-                            emeraldGreen = emeraldGreen,
-                            cardBackground = cardBackground,
-                            borderLight = borderLight
-                        )
-                    }
-                }
-
-                // Hiệu ứng đang soạn tin nhắn của FinSprout
-                if (isTyping) {
-                    item {
-                        BotTypingBubble(cardBackground = cardBackground, borderLight = borderLight)
-                    }
-                }
-            }
-
-            // ====================== 3. THANH GỢI Ý NHANH (QUICK PROMPTS) ======================
-            LazyRow(
+            // ====================== 1. THANH TIÊU ĐỀ KÍNH MỜ ======================
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 6.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                items(quickPrompts) { prompt ->
-                    Surface(
-                        onClick = {
-                            inputText = prompt
-                            onSendMessage(prompt)
-                            inputText = ""
-                        },
-                        shape = RoundedCornerShape(18.dp),
-                        color = Color.White,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDCE2DD)),
-                        shadowElevation = 1.dp
-                    ) {
-                        Text(
-                            text = prompt,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = forestGreenDark,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                        )
-                    }
-                }
-            }
-
-            // ====================== 4. KHUNG NHẬP TIN NHẮN (INPUT BAR) ======================
-            Surface(
-                color = cardBackground,
-                shadowElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    hazeState = hazeState,
+                    shape = SpendlyShapeTokens.CardLarge,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 10.dp),
-                        placeholder = {
-                            Text(
-                                text = "Hỏi FinSprout hoặc nhập khoản chi...",
-                                fontSize = 13.5.sp,
-                                color = Color(0xFFA0ACA4)
-                            )
-                        },
-                        shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFFF9F8F5),
-                            unfocusedContainerColor = Color(0xFFF9F8F5),
-                            focusedBorderColor = forestGreenDark,
-                            unfocusedBorderColor = Color(0xFFE2DFD6),
-                            focusedTextColor = forestGreenDark,
-                            unfocusedTextColor = forestGreenDark
-                        ),
-                        singleLine = true
-                    )
-
-                    // Nút gửi tin nhắn
-                    val canSend = inputText.isNotBlank()
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(if (canSend) forestGreenDark else Color(0xFFCBD6CF))
-                            .clickable(enabled = canSend) {
-                                val text = inputText.trim()
-                                if (text.isNotEmpty()) {
-                                    onSendMessage(text)
-                                    inputText = ""
-                                }
-                            },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        SendIcon(
-                            color = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            IconButton(onClick = onBackClicked) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = "Quay lại",
+                                    tint = colors.textPrimary
+                                )
+                            }
+
+                            FinSproutAvatarBadge(size = 40.dp)
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "FinSprout AI",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = colors.textPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(SpendlyShapeTokens.Pill)
+                                            .background(colors.lavenderContainer)
+                                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "Gemini 2.5 Flash ✨",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = colors.onLavenderContainer
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = activeGroupName?.takeIf { it.isNotBlank() }?.let {
+                                        "Đang kết nối quỹ: $it"
+                                    } ?: "Trực tuyến · Ghi chi tiêu & phân tích quỹ",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = {
+                                onClearChat()
+                                Toast.makeText(context, "Đã làm mới cuộc trò chuyện", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = "Làm mới hội thoại",
+                                tint = colors.textMuted
+                            )
+                        }
                     }
                 }
             }
-        }
-    }
-}
 
-/**
- * Thẻ chào mừng & hướng dẫn sử dụng nhanh FinSprout AI
- */
-@Composable
-private fun FinSproutIntroCard(
-    sageLight: Color,
-    forestGreenDark: Color
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(sageLight.copy(alpha = 0.5f))
-            .border(1.dp, Color(0xFFCADBD0), RoundedCornerShape(16.dp))
-            .padding(14.dp)
-    ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "🌱",
-                    fontSize = 18.sp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Mẹo sử dụng FinSprout AI",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = forestGreenDark
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "• Chat 'Ăn lẩu 650k Hùng trả' để tạo khoản chi 1-chạm\n" +
-                        "• Hỏi 'Tình hình quỹ' để kiểm tra hạn mức và số dư\n" +
-                        "• Nhờ 'Viết tin nhắn đòi tiền bạn Linh' để nhắc nợ khéo léo",
-                fontSize = 12.5.sp,
-                lineHeight = 18.sp,
-                color = Color(0xFF3C5346)
+            // ====================== 2. DANH SÁCH TIN NHẮN ======================
+            FinSproutMessageList(
+                messages = messages,
+                isTyping = isTyping,
+                onConfirmExpense = onConfirmExpense,
+                hazeState = hazeState,
+                showIntroCard = true,
+                compact = false,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            )
+
+            // ====================== 3. GỢI Ý NHANH ======================
+            FinSproutQuickPromptRow(
+                prompts = FIN_SPROUT_QUICK_PROMPTS,
+                hazeState = hazeState,
+                onPromptSelected = { prompt ->
+                    onSendMessage(prompt)
+                    inputText = ""
+                },
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+
+            // ====================== 4. KHUNG NHẬP TIN NHẮN ======================
+            FinSproutChatInputBar(
+                inputText = inputText,
+                onInputChange = { inputText = it },
+                onSend = {
+                    val trimmed = inputText.trim()
+                    if (trimmed.isNotEmpty()) {
+                        onSendMessage(trimmed)
+                        inputText = ""
+                    }
+                },
+                hazeState = hazeState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             )
         }
     }
 }
 
 /**
- * Bong bóng tin nhắn của Người Dùng (User Bubble)
+ * Avatar mầm xanh kết hợp gradient Lavender–Indigo–Sky của FinSprout AI.
  */
 @Composable
-private fun UserMessageBubble(
-    message: ChatMessage,
-    bubbleColor: Color
+internal fun FinSproutAvatarBadge(
+    size: Dp = 36.dp,
+    showOnlineDot: Boolean = true
 ) {
+    val colors = MaterialTheme.spendlyColors
+    Box(contentAlignment = Alignment.BottomEnd) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(RoundedCornerShape((size.value * 0.34f).dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(SpendlyLavender, SpendlyIndigo, SpendlySky)
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            SproutIconBot(
+                modifier = Modifier.size(size * 0.56f),
+                color = Color.White
+            )
+        }
+        if (showOnlineDot) {
+            Box(
+                modifier = Modifier
+                    .size((size.value * 0.27f).coerceAtLeast(9f).dp)
+                    .clip(CircleShape)
+                    .background(colors.mintDeep)
+                    .border(1.5.dp, colors.surface, CircleShape)
+            )
+        }
+    }
+}
+
+/**
+ * Danh sách tin nhắn hội thoại + Action Cards dùng chung cho cả Full Screen và Mini Popup.
+ */
+@Composable
+internal fun FinSproutMessageList(
+    messages: List<ChatMessage>,
+    isTyping: Boolean,
+    onConfirmExpense: (String) -> Unit,
+    hazeState: HazeState?,
+    modifier: Modifier = Modifier,
+    showIntroCard: Boolean = true,
+    compact: Boolean = false
+) {
+    val listState = rememberLazyListState()
+    val horizontalPad = if (compact) 12.dp else 16.dp
+    val verticalPad = if (compact) 8.dp else 12.dp
+    val itemSpacing = if (compact) 10.dp else 14.dp
+
+    LaunchedEffect(messages.size, isTyping) {
+        val total = messages.size + (if (showIntroCard) 1 else 0) + (if (isTyping) 1 else 0)
+        if (total > 0) {
+            listState.animateScrollToItem(total - 1)
+        }
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = horizontalPad, vertical = verticalPad),
+        verticalArrangement = Arrangement.spacedBy(itemSpacing)
+    ) {
+        if (showIntroCard) {
+            item(key = "intro_card") {
+                FinSproutIntroCard(hazeState = hazeState)
+            }
+        }
+
+        items(messages, key = { it.id }) { message ->
+            if (message.isFromUser) {
+                UserMessageBubble(message = message)
+            } else {
+                BotMessageBubble(
+                    message = message,
+                    onConfirmExpense = onConfirmExpense,
+                    hazeState = hazeState,
+                    compact = compact
+                )
+            }
+        }
+
+        if (isTyping) {
+            item(key = "typing_indicator") {
+                BotTypingBubble(hazeState = hazeState)
+            }
+        }
+    }
+}
+
+/**
+ * Thanh chip gợi ý câu hỏi nhanh cuộn ngang.
+ */
+@Composable
+internal fun FinSproutQuickPromptRow(
+    prompts: List<String>,
+    hazeState: HazeState?,
+    onPromptSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    contentHorizontalPadding: Dp = 14.dp
+) {
+    val colors = MaterialTheme.spendlyColors
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = contentHorizontalPadding),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(prompts) { prompt ->
+            Box(
+                modifier = Modifier
+                    .spendlyGlassSurface(
+                        hazeState = hazeState,
+                        shape = SpendlyShapeTokens.Pill,
+                        tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.35f else 0.78f)
+                    )
+                    .clickable { onPromptSelected(prompt) }
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    text = prompt,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.onLavenderContainer,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Thanh nhập tin nhắn + nút Gửi gradient Lavender dùng chung cho Full Screen và Mini Popup.
+ */
+@Composable
+internal fun FinSproutChatInputBar(
+    inputText: String,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    hazeState: HazeState?,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    val colors = MaterialTheme.spendlyColors
+    val canSend = inputText.isNotBlank()
+
+    GlassCard(
+        modifier = modifier,
+        hazeState = hazeState,
+        shape = SpendlyShapeTokens.CardLarge,
+        contentPadding = PaddingValues(
+            horizontal = if (compact) 10.dp else 12.dp,
+            vertical = if (compact) 6.dp else 8.dp
+        )
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = inputText,
+                onValueChange = onInputChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                placeholder = {
+                    Text(
+                        text = "Hỏi FinSprout hoặc nhập khoản chi...",
+                        fontSize = if (compact) 12.5.sp else 13.5.sp,
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
+                shape = SpendlyShapeTokens.Pill,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = colors.surface.copy(alpha = if (colors.isDark) 0.55f else 0.72f),
+                    unfocusedContainerColor = colors.surface.copy(alpha = if (colors.isDark) 0.40f else 0.52f),
+                    focusedBorderColor = colors.primaryLavender,
+                    unfocusedBorderColor = colors.divider,
+                    focusedTextColor = colors.textPrimary,
+                    unfocusedTextColor = colors.textPrimary,
+                    cursorColor = colors.deepLavender
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
+                singleLine = true
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(if (compact) 42.dp else 46.dp)
+                    .clip(CircleShape)
+                    .background(
+                        brush = if (canSend) {
+                            Brush.linearGradient(listOf(SpendlyLavender, SpendlyIndigo))
+                        } else {
+                            Brush.linearGradient(
+                                listOf(colors.divider, colors.divider)
+                            )
+                        }
+                    )
+                    .clickable(enabled = canSend, onClick = onSend),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "Gửi tin nhắn",
+                    tint = Color.White,
+                    modifier = Modifier.size(if (compact) 18.dp else 20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinSproutIntroCard(hazeState: HazeState?) {
+    val colors = MaterialTheme.spendlyColors
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        hazeState = hazeState,
+        shape = SpendlyShapeTokens.CardMedium,
+        tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.35f else 0.65f),
+        contentPadding = PaddingValues(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = colors.deepLavender,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Mẹo sử dụng FinSprout AI",
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.textPrimary
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "• Chat \"Ăn lẩu 650k Hùng trả\" để tạo khoản chi 1-chạm\n" +
+                "• Hỏi \"Tình hình quỹ\" hoặc \"Ai đang nợ ai?\" để tra số liệu thật\n" +
+                "• Nhờ \"Viết tin nhắn nhắc nợ bạn Linh\" để đòi tiền khéo léo",
+            style = MaterialTheme.typography.bodySmall,
+            lineHeight = 18.sp,
+            color = colors.textMuted
+        )
+    }
+}
+
+@Composable
+private fun UserMessageBubble(message: ChatMessage) {
+    val colors = MaterialTheme.spendlyColors
+    val bubbleShape = RoundedCornerShape(
+        topStart = 18.dp,
+        topEnd = 4.dp,
+        bottomStart = 18.dp,
+        bottomEnd = 18.dp
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
         Column(
             horizontalAlignment = Alignment.End,
-            modifier = Modifier.fillMaxWidth(0.82f)
+            modifier = Modifier.fillMaxWidth(0.84f)
         ) {
             Box(
                 modifier = Modifier
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 18.dp,
-                            topEnd = 4.dp,
-                            bottomStart = 18.dp,
-                            bottomEnd = 18.dp
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = bubbleShape,
+                        ambientColor = SpendlyLavenderDeep.copy(alpha = 0.25f),
+                        spotColor = SpendlyLavenderDeep.copy(alpha = 0.25f)
+                    )
+                    .clip(bubbleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(SpendlyLavender, SpendlyLavenderDeep)
                         )
                     )
-                    .background(bubbleColor)
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = message.text,
-                    fontSize = 14.sp,
+                    fontSize = 13.5.sp,
                     lineHeight = 20.sp,
                     color = Color.White
                 )
@@ -457,87 +566,69 @@ private fun UserMessageBubble(
             Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = message.timestampFormatted,
-                fontSize = 11.sp,
-                color = Color(0xFF94A39B)
+                fontSize = 10.5.sp,
+                color = colors.textMuted
             )
         }
     }
 }
 
-/**
- * Bong bóng tin nhắn của FinSprout AI (Bot Bubble) kèm Action Card
- */
 @Composable
 private fun BotMessageBubble(
     message: ChatMessage,
     onConfirmExpense: (String) -> Unit,
-    forestGreenDark: Color,
-    emeraldGreen: Color,
-    cardBackground: Color,
-    borderLight: Color
+    hazeState: HazeState?,
+    compact: Boolean
 ) {
     val context = LocalContext.current
+    val colors = MaterialTheme.spendlyColors
+    val bubbleShape = RoundedCornerShape(
+        topStart = 4.dp,
+        topEnd = 18.dp,
+        bottomStart = 18.dp,
+        bottomEnd = 18.dp
+    )
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
     ) {
-        // Icon đại diện FinSprout nhỏ gọn
-        Box(
-            modifier = Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFE2F0E7)),
-            contentAlignment = Alignment.Center
-        ) {
-            SproutIconBot(
-                modifier = Modifier.size(17.dp),
-                color = emeraldGreen
-            )
-        }
+        FinSproutAvatarBadge(
+            size = if (compact) 26.dp else 30.dp,
+            showOnlineDot = false
+        )
 
         Spacer(modifier = Modifier.width(8.dp))
 
         Column(
-            modifier = Modifier.fillMaxWidth(0.88f)
+            modifier = Modifier.fillMaxWidth(0.90f)
         ) {
-            // Phần nội dung tin nhắn văn bản
             Box(
                 modifier = Modifier
-                    .shadow(1.dp, RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 4.dp,
-                            topEnd = 18.dp,
-                            bottomStart = 18.dp,
-                            bottomEnd = 18.dp
-                        )
+                    .spendlyGlassSurface(
+                        hazeState = hazeState,
+                        shape = bubbleShape,
+                        tintColor = colors.glassContainer
                     )
-                    .background(cardBackground)
-                    .border(1.dp, borderLight, RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .padding(horizontal = 13.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = message.text,
-                    fontSize = 14.sp,
-                    lineHeight = 21.sp,
-                    color = forestGreenDark
+                    fontSize = if (compact) 13.sp else 13.5.sp,
+                    lineHeight = 20.sp,
+                    color = colors.textPrimary
                 )
             }
 
-            // ==================== THẺ HÀNH ĐỘNG GHI CHI TIÊU (EXPENSE ACTION CARD) ====================
             message.expenseProposal?.let { proposal ->
                 Spacer(modifier = Modifier.height(8.dp))
                 ExpenseActionCard(
                     proposal = proposal,
                     onConfirm = { onConfirmExpense(message.id) },
-                    forestGreenDark = forestGreenDark,
-                    emeraldGreen = emeraldGreen,
-                    cardBackground = cardBackground
+                    hazeState = hazeState
                 )
             }
 
-            // ==================== THẺ GỢI Ý MẪU NHẮC NỢ (REMINDER ACTION CARD) ====================
             message.reminderProposal?.let { reminder ->
                 Spacer(modifier = Modifier.height(8.dp))
                 ReminderActionCard(
@@ -546,216 +637,201 @@ private fun BotMessageBubble(
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("Nhắc nợ", reminder.suggestedMessage)
                         clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, "Đã sao chép tin nhắn nhắc nợ vào bộ nhớ tạm!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            "Đã sao chép tin nhắn nhắc nợ vào bộ nhớ tạm!",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     },
-                    forestGreenDark = forestGreenDark,
-                    cardBackground = cardBackground
+                    hazeState = hazeState
                 )
             }
 
             Spacer(modifier = Modifier.height(3.dp))
             Text(
                 text = message.timestampFormatted,
-                fontSize = 11.sp,
-                color = Color(0xFF94A39B),
+                fontSize = 10.5.sp,
+                color = colors.textMuted,
                 modifier = Modifier.padding(start = 2.dp)
             )
         }
     }
 }
 
-/**
- * Thẻ hành động 1-chạm xác nhận tạo chi tiêu (Expense Action Card)
- */
 @Composable
 private fun ExpenseActionCard(
     proposal: ChatExpenseProposal,
     onConfirm: () -> Unit,
-    forestGreenDark: Color,
-    emeraldGreen: Color,
-    cardBackground: Color
+    hazeState: HazeState?
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(2.dp, RoundedCornerShape(14.dp))
-            .clip(RoundedCornerShape(14.dp))
-            .background(cardBackground)
-            .border(1.5.dp, if (proposal.isConfirmed) Color(0xFF86EFAC) else Color(0xFFC7D7CE), RoundedCornerShape(14.dp))
-            .padding(14.dp)
+    val colors = MaterialTheme.spendlyColors
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        hazeState = hazeState,
+        shape = SpendlyShapeTokens.CardSmall,
+        tintColor = if (proposal.isConfirmed) {
+            colors.mintContainer.copy(alpha = if (colors.isDark) 0.40f else 0.72f)
+        } else {
+            colors.glassContainer
+        },
+        contentPadding = PaddingValues(13.dp)
     ) {
-        Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFFEF3C7)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "🧾", fontSize = 16.sp)
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = proposal.title,
-                            fontSize = 14.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = forestGreenDark
-                        )
-                        Text(
-                            text = "${proposal.categoryName} · ${proposal.payerName} trả",
-                            fontSize = 12.sp,
-                            color = Color(0xFF6E7C74)
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.lavenderContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ReceiptLong,
+                        contentDescription = null,
+                        tint = colors.onLavenderContainer,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-
-                Text(
-                    text = proposal.amountFormatted,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFDC2626)
-                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = proposal.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${proposal.categoryName} · ${proposal.payerName} trả",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Quy tắc: ${proposal.splitSummary}",
-                    fontSize = 11.5.sp,
-                    color = Color(0xFF7E8E84),
-                    modifier = Modifier.weight(1f)
-                )
+            Text(
+                text = proposal.amountFormatted,
+                style = SpendlyTextStyles.moneyMedium,
+                color = colors.coralDeep
+            )
+        }
 
-                if (proposal.isConfirmed) {
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xFFE2F4E9), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
-                    ) {
-                        Text(
-                            text = "✓ Đã lưu vào Quỹ",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = emeraldGreen
-                        )
-                    }
-                } else {
-                    ElevatedButton(
-                        onClick = onConfirm,
-                        colors = ButtonDefaults.elevatedButtonColors(
-                            containerColor = forestGreenDark,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "Xác nhận lưu",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Chia: ${proposal.splitSummary}",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textMuted,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            if (proposal.isConfirmed) {
+                Row(
+                    modifier = Modifier
+                        .clip(SpendlyShapeTokens.Pill)
+                        .background(colors.mintContainer)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = colors.mintDeep,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Đã lưu vào Quỹ",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = colors.mintDeep
+                    )
                 }
+            } else {
+                SpendlyButton(
+                    text = "Xác nhận lưu",
+                    onClick = onConfirm,
+                    height = 36.dp
+                )
             }
         }
     }
 }
 
-/**
- * Thẻ gợi ý tin nhắn đòi nợ tinh tế (Reminder Action Card)
- */
 @Composable
 private fun ReminderActionCard(
     reminder: ChatReminderProposal,
     onCopy: () -> Unit,
-    forestGreenDark: Color,
-    cardBackground: Color
+    hazeState: HazeState?
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(2.dp, RoundedCornerShape(14.dp))
-            .clip(RoundedCornerShape(14.dp))
-            .background(cardBackground)
-            .border(1.dp, Color(0xFFE5D5C5), RoundedCornerShape(14.dp))
-            .padding(14.dp)
+    val colors = MaterialTheme.spendlyColors
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        hazeState = hazeState,
+        shape = SpendlyShapeTokens.CardSmall,
+        contentPadding = PaddingValues(13.dp)
     ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "💌", fontSize = 15.sp)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Mẫu tin nhắn nhắc bạn ${reminder.recipientName} (${reminder.amountFormatted})",
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = forestGreenDark
-                )
-            }
+        Text(
+            text = "💌 Nhắc bạn ${reminder.recipientName} (${reminder.amountFormatted})",
+            style = MaterialTheme.typography.titleSmall,
+            color = colors.textPrimary
+        )
 
-            Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-            // Nội dung tin nhắn đóng khung trích dẫn
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFFFFDF8), RoundedCornerShape(10.dp))
-                    .border(1.dp, Color(0xFFF3ECE0), RoundedCornerShape(10.dp))
-                    .padding(10.dp)
-            ) {
-                Text(
-                    text = reminder.suggestedMessage,
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp,
-                    fontStyle = FontStyle.Italic,
-                    color = Color(0xFF4A5568)
-                )
-            }
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.25f else 0.50f),
+            border = BorderStroke(1.dp, colors.divider),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = reminder.suggestedMessage,
+                fontSize = 12.5.sp,
+                lineHeight = 18.sp,
+                fontStyle = FontStyle.Italic,
+                color = colors.textPrimary,
+                modifier = Modifier.padding(10.dp)
+            )
+        }
 
-            Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                ElevatedButton(
-                    onClick = onCopy,
-                    colors = ButtonDefaults.elevatedButtonColors(
-                        containerColor = Color(0xFF2E6349),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = "📋 Sao chép tin nhắn",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            SpendlyButton(
+                text = "Sao chép tin nhắn",
+                onClick = onCopy,
+                leadingIcon = Icons.Rounded.ContentCopy,
+                height = 36.dp
+            )
         }
     }
 }
 
-/**
- * Bong bóng hiệu ứng 3 chấm động khi FinSprout đang suy nghĩ (Typing Indicator)
- */
 @Composable
-private fun BotTypingBubble(
-    cardBackground: Color,
-    borderLight: Color
-) {
+private fun BotTypingBubble(hazeState: HazeState?) {
+    val colors = MaterialTheme.spendlyColors
     val transition = rememberInfiniteTransition(label = "dots")
     val dotAlpha1 by transition.animateFloat(
         initialValue = 0.3f,
@@ -791,71 +867,38 @@ private fun BotTypingBubble(
     ) {
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .background(cardBackground)
-                .border(1.dp, borderLight, RoundedCornerShape(16.dp))
+                .spendlyGlassSurface(
+                    hazeState = hazeState,
+                    shape = RoundedCornerShape(16.dp),
+                    tintColor = colors.glassContainer
+                )
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.size(7.dp).background(Color(0xFF2E8B57).copy(alpha = dotAlpha1), CircleShape))
-                Box(modifier = Modifier.size(7.dp).background(Color(0xFF2E8B57).copy(alpha = dotAlpha2), CircleShape))
-                Box(modifier = Modifier.size(7.dp).background(Color(0xFF2E8B57).copy(alpha = dotAlpha3), CircleShape))
+                Box(modifier = Modifier.size(7.dp).background(colors.primaryLavender.copy(alpha = dotAlpha1), CircleShape))
+                Box(modifier = Modifier.size(7.dp).background(colors.primaryLavender.copy(alpha = dotAlpha2), CircleShape))
+                Box(modifier = Modifier.size(7.dp).background(colors.primaryLavender.copy(alpha = dotAlpha3), CircleShape))
             }
         }
     }
 }
 
-// ====================== CÁC BIỂU TƯỢNG VẼ BẰNG CANVAS (VECTOR ICONS) ======================
-
 @Composable
-private fun BackArrowIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = 2.2.dp.toPx()
-
-        drawLine(
-            color = color,
-            start = Offset(w * 0.75f, h * 0.5f),
-            end = Offset(w * 0.25f, h * 0.5f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.50f, h * 0.25f),
-            end = Offset(w * 0.25f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.50f, h * 0.75f),
-            end = Offset(w * 0.25f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-@Composable
-private fun SproutIconBot(color: Color, modifier: Modifier = Modifier) {
+internal fun SproutIconBot(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-        // Thân mầm cây vươn lên
         val stem = Path().apply {
             moveTo(w * 0.50f, h * 0.88f)
             cubicTo(w * 0.50f, h * 0.65f, w * 0.52f, h * 0.45f, w * 0.50f, h * 0.25f)
         }
         drawPath(path = stem, color = color, style = stroke)
 
-        // Nhánh lá trái
         val leftLeaf = Path().apply {
             moveTo(w * 0.50f, h * 0.55f)
             cubicTo(w * 0.35f, h * 0.52f, w * 0.18f, h * 0.35f, w * 0.32f, h * 0.30f)
@@ -863,7 +906,6 @@ private fun SproutIconBot(color: Color, modifier: Modifier = Modifier) {
         }
         drawPath(leftLeaf, color = color, style = stroke)
 
-        // Nhánh lá phải
         val rightLeaf = Path().apply {
             moveTo(w * 0.50f, h * 0.42f)
             cubicTo(w * 0.62f, h * 0.38f, w * 0.82f, h * 0.22f, w * 0.70f, h * 0.18f)
@@ -873,61 +915,8 @@ private fun SproutIconBot(color: Color, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun RefreshIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = 2.dp.toPx()
-
-        drawArc(
-            color = color,
-            startAngle = 45f,
-            sweepAngle = 270f,
-            useCenter = false,
-            topLeft = Offset(w * 0.2f, h * 0.2f),
-            size = Size(w * 0.6f, h * 0.6f),
-            style = Stroke(width = stroke, cap = StrokeCap.Round)
-        )
-        // Mũi tên cung tròn
-        drawLine(
-            color = color,
-            start = Offset(w * 0.82f, h * 0.30f),
-            end = Offset(w * 0.82f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.64f, h * 0.50f),
-            end = Offset(w * 0.82f, h * 0.50f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-@Composable
-private fun SendIcon(color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        val path = Path().apply {
-            moveTo(w * 0.22f, h * 0.20f)
-            lineTo(w * 0.85f, h * 0.50f)
-            lineTo(w * 0.22f, h * 0.80f)
-            lineTo(w * 0.38f, h * 0.50f)
-            close()
-        }
-        drawPath(path = path, color = color)
-    }
-}
-
-// ====================== PREVIEW HIỂN THỊ TRỰC QUAN TRONG ANDROID STUDIO ======================
-
 @Preview(
-    name = "16 · Trợ lý AI FinSprout (SpendTogether)",
+    name = "16 · Trợ lý AI FinSprout (Spendly Lavender)",
     showBackground = true,
     showSystemUi = true
 )
@@ -937,7 +926,7 @@ fun ChatbotScreenPreview() {
         listOf(
             ChatMessage(
                 id = "1",
-                text = "Chào bạn! Mình là FinSprout 🌱 - Trợ lý AI của SpendTogether. Mình có thể giúp bạn ghi nhanh chi tiêu, kiểm tra quỹ nhóm hoặc gợi ý tin nhắn đòi nợ khéo léo. Bạn cần hỗ trợ gì hôm nay?",
+                text = "Chào bạn! Mình là FinSprout 🌱 - Trợ lý AI của Spendly. Mình có thể giúp bạn ghi nhanh chi tiêu, kiểm tra quỹ nhóm hoặc gợi ý tin nhắn đòi nợ khéo léo.",
                 isFromUser = false,
                 timestampFormatted = "10:30"
             ),
@@ -958,36 +947,40 @@ fun ChatbotScreenPreview() {
                     amountFormatted = "180.000 đ",
                     categoryName = "Ăn uống",
                     payerName = "Lê Văn Hùng",
-                    splitSummary = "Chia đều cho 5 thành viên",
+                    splitSummary = "Chia đều cho 4 thành viên",
                     isConfirmed = false
-                )
-            ),
-            ChatMessage(
-                id = "4",
-                text = "Viết giúp mình tin nhắn vui vẻ nhắc bạn Linh chuyển 120k tiền lẩu hôm qua nha",
-                isFromUser = true,
-                timestampFormatted = "10:32"
-            ),
-            ChatMessage(
-                id = "5",
-                text = "FinSprout đã soạn sẵn một mẫu nhắc nợ vừa dễ thương vừa tế nhị cho bạn này! Bạn có thể bấm sao chép để gửi ngay qua Zalo/Messenger nhé: 💌",
-                isFromUser = false,
-                timestampFormatted = "10:32",
-                reminderProposal = ChatReminderProposal(
-                    recipientName = "Linh",
-                    amountFormatted = "120.000 đ",
-                    suggestedMessage = "Ting ting! 🧋 Linh ơi, hôm trước nhóm mình ăn lẩu vui ghê. Phần của bạn là 120.000đ nè, khi nào tiện bạn chuyển vào quỹ giúp nhóm chốt sổ nha! Yêu thương ❤️"
                 )
             )
         )
     }
 
     Nhoms8Theme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            ChatbotScreen(
-                messages = sampleMessages,
-                isTyping = false
-            )
-        }
+        ChatbotScreen(
+            messages = sampleMessages,
+            isTyping = false,
+            activeGroupName = "Quỹ Chi Tiêu Nhóm 08"
+        )
+    }
+}
+
+@Preview(
+    name = "16b · Trợ lý AI FinSprout (Dark Mode)",
+    showBackground = true,
+    showSystemUi = true
+)
+@Composable
+private fun ChatbotScreenDarkPreview() {
+    SpendlyTheme(darkTheme = true) {
+        ChatbotScreen(
+            messages = listOf(
+                ChatMessage(
+                    id = "1",
+                    text = "Chào bạn! Mình là FinSprout 🌱. Bạn cần hỗ trợ gì hôm nay?",
+                    isFromUser = false,
+                    timestampFormatted = "10:30"
+                )
+            ),
+            activeGroupName = "Quỹ Chi Tiêu Nhóm 08"
+        )
     }
 }

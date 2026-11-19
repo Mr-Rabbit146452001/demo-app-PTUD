@@ -47,6 +47,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,6 +100,10 @@ fun ExpenseDetailScreen(
     currentUserName: String = ""
 ) {
     val detailState by viewModel.observeExpenseDetail(groupId, expenseId).collectAsStateWithLifecycle()
+
+    LaunchedEffect(groupId, expenseId) {
+        viewModel.clearDetailError()
+    }
 
     ExpenseDetailContent(
         detailState = detailState,

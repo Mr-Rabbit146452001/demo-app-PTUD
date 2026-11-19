@@ -108,7 +108,8 @@ fun SpendlyNavHost(
         factory = GroupViewModel.factory(
             userRepository = SpendlyServiceLocator.userRepository,
             groupRepository = SpendlyServiceLocator.groupRepository,
-            transactionRepository = SpendlyServiceLocator.transactionRepository
+            transactionRepository = SpendlyServiceLocator.transactionRepository,
+            autoBindDefaultUser = SpendlyServiceLocator.authRepository.isUserLoggedIn()
         )
     ),
     transactionViewModel: TransactionViewModel = viewModel(
@@ -604,6 +605,9 @@ fun SpendlyNavHost(
                         },
                         onLogoutClicked = {
                             spendTogetherViewModel.signOutFromFirebase()
+                            SpendlyServiceLocator.setActiveGroup(null)
+                            spendTogetherViewModel.setActiveGroupId(null)
+                            groupViewModel.resetSession()
                             Toast.makeText(context, "Đã đăng xuất tài khoản", Toast.LENGTH_SHORT).show()
                             navController.navigate(SpendlyRoutes.LOGIN) {
                                 popUpTo(navController.graph.id) { inclusive = true }
@@ -621,12 +625,30 @@ fun SpendlyNavHost(
                             navController.navigate(SpendlyRoutes.groupDetail(groupId))
                         },
                         onCreateGroupClick = {
-                            groupViewModel.clearMessages()
-                            navController.navigate(SpendlyRoutes.CREATE_GROUP)
+                            if (currentUser.uid.isBlank()) {
+                                Toast.makeText(
+                                    context,
+                                    "Vui lòng đăng nhập để đồng bộ quỹ trên Cloud Firestore",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                navController.navigate(SpendlyRoutes.LOGIN)
+                            } else {
+                                groupViewModel.clearMessages()
+                                navController.navigate(SpendlyRoutes.CREATE_GROUP)
+                            }
                         },
                         onJoinGroupClick = {
-                            groupViewModel.clearMessages()
-                            navController.navigate(SpendlyRoutes.JOIN_GROUP)
+                            if (currentUser.uid.isBlank()) {
+                                Toast.makeText(
+                                    context,
+                                    "Vui lòng đăng nhập để tham gia quỹ bằng mã mời",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                navController.navigate(SpendlyRoutes.LOGIN)
+                            } else {
+                                groupViewModel.clearMessages()
+                                navController.navigate(SpendlyRoutes.JOIN_GROUP)
+                            }
                         }
                     )
                 }

@@ -148,16 +148,19 @@ private object DefaultSpendlyRepositoryHolder {
 class GroupViewModel @JvmOverloads constructor(
     private val userRepository: UserRepository = DefaultSpendlyRepositoryHolder.instance,
     private val groupRepository: GroupRepository = DefaultSpendlyRepositoryHolder.instance,
-    private val transactionRepository: TransactionRepository = DefaultSpendlyRepositoryHolder.instance
+    private val transactionRepository: TransactionRepository = DefaultSpendlyRepositoryHolder.instance,
+    autoBindDefaultUser: Boolean = true
 ) : ViewModel() {
 
-    private val _currentUser = MutableStateFlow(DEFAULT_OFFLINE_USER)
+    private val _currentUser = MutableStateFlow(
+        if (autoBindDefaultUser) DEFAULT_OFFLINE_USER else SpendlyUser()
+    )
     val currentUser: StateFlow<SpendlyUser> = _currentUser.asStateFlow()
 
     private val _activeGroupId = MutableStateFlow<String?>(null)
     private val _searchQuery = MutableStateFlow("")
-    private val _isBootstrapping = MutableStateFlow(true)
-    private val _hasLoadedGroups = MutableStateFlow(false)
+    private val _isBootstrapping = MutableStateFlow(autoBindDefaultUser)
+    private val _hasLoadedGroups = MutableStateFlow(!autoBindDefaultUser)
     private val _operationStatus = MutableStateFlow(OperationStatus())
 
     private val groupDetailFlows = ConcurrentHashMap<String, StateFlow<GroupDetailUiState>>()
@@ -324,7 +327,23 @@ class GroupViewModel @JvmOverloads constructor(
                 }
             }
         }
-        bindUser(DEFAULT_OFFLINE_USER)
+        if (autoBindDefaultUser) {
+            bindUser(DEFAULT_OFFLINE_USER)
+        }
+    }
+
+    /**
+     * Xóa sạch trạng thái phiên nhóm khi người dùng đăng xuất.
+     */
+    fun resetSession() {
+        bootstrapJob?.cancel()
+        _currentUser.value = SpendlyUser()
+        _activeGroupId.value = null
+        _searchQuery.value = ""
+        _hasLoadedGroups.value = true
+        _isBootstrapping.value = false
+        _operationStatus.value = OperationStatus()
+        groupDetailFlows.clear()
     }
 
     /**
@@ -749,14 +768,16 @@ class GroupViewModel @JvmOverloads constructor(
         fun factory(
             userRepository: UserRepository,
             groupRepository: GroupRepository,
-            transactionRepository: TransactionRepository
+            transactionRepository: TransactionRepository,
+            autoBindDefaultUser: Boolean = true
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return GroupViewModel(
                     userRepository = userRepository,
                     groupRepository = groupRepository,
-                    transactionRepository = transactionRepository
+                    transactionRepository = transactionRepository,
+                    autoBindDefaultUser = autoBindDefaultUser
                 ) as T
             }
         }

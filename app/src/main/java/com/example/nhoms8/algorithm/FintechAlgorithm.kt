@@ -5,6 +5,8 @@ import com.example.nhoms8.DebtItem
 import com.example.nhoms8.GroupMember
 import com.example.nhoms8.MemberBalanceStatus
 import com.example.nhoms8.RecentTransaction
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.text.DecimalFormat
 import kotlin.math.abs
 import kotlin.math.min
@@ -160,6 +162,42 @@ object FintechAlgorithm {
         val diff = totalAmount - splitAmounts.sum()
         if (splitAmounts.isNotEmpty() && diff != 0L) {
             splitAmounts[0] += diff
+        }
+        return splitAmounts
+    }
+
+    /**
+     * Thuật toán Chia tiền theo Tỷ lệ % chính xác (Percentage Split với BigDecimal)
+     * Chuẩn hóa theo tổng tỷ lệ đầu vào và cộng phần dư làm tròn vào thành viên đầu tiên có tỷ lệ > 0
+     * để đảm bảo tổng các phần luôn bằng chính xác totalAmount.
+     */
+    fun calculatePercentageSplit(totalAmount: Long, percentages: List<Double>): List<Long> {
+        if (percentages.isEmpty()) return emptyList()
+        if (totalAmount <= 0L) return List(percentages.size) { 0L }
+        if (percentages.any { !it.isFinite() || it < 0.0 }) return List(percentages.size) { 0L }
+
+        val pctDecimals = percentages.map { BigDecimal.valueOf(it) }
+        val totalPct = pctDecimals.fold(BigDecimal.ZERO) { acc, value -> acc.add(value) }
+        if (totalPct <= BigDecimal.ZERO) {
+            return calculateEqualSplit(totalAmount, percentages.size)
+        }
+
+        val totalAmountBd = BigDecimal.valueOf(totalAmount)
+        val splitAmounts = pctDecimals.map { pct ->
+            if (pct.compareTo(BigDecimal.ZERO) == 0) {
+                0L
+            } else {
+                totalAmountBd
+                    .multiply(pct)
+                    .divide(totalPct, 0, RoundingMode.DOWN)
+                    .toLong()
+            }
+        }.toMutableList()
+
+        val diff = totalAmount - splitAmounts.sum()
+        val firstNonZeroIndex = percentages.indexOfFirst { it > 0.0 }
+        if (diff != 0L && firstNonZeroIndex >= 0) {
+            splitAmounts[firstNonZeroIndex] += diff
         }
         return splitAmounts
     }

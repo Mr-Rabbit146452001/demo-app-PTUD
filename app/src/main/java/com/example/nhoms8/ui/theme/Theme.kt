@@ -1,6 +1,5 @@
 package com.example.nhoms8.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -9,35 +8,80 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
+private val SpendlyLightColorScheme = lightColorScheme(
+    primary = SpendlyLavender,
     onPrimary = Color.White,
+    primaryContainer = SpendlyLavenderContainer,
+    onPrimaryContainer = SpendlyLavenderDeep,
+    secondary = SpendlyMintDeep,
     onSecondary = Color.White,
+    secondaryContainer = SpendlyMintContainer,
+    onSecondaryContainer = SpendlyMintDeep,
+    tertiary = SpendlySky,
     onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    tertiaryContainer = SpendlySkyTint,
+    onTertiaryContainer = Color(0xFF1B577B),
+    background = SpendlyLightBackground,
+    onBackground = SpendlyTextDark,
+    surface = SpendlyLightSurface,
+    onSurface = SpendlyTextDark,
+    surfaceVariant = SpendlyLightSurfaceVariant,
+    onSurfaceVariant = SpendlyTextMuted,
+    error = SpendlyCoralDeep,
+    onError = Color.White,
+    errorContainer = SpendlyCoralContainer,
+    onErrorContainer = SpendlyCoralDeep,
+    outline = Color(0xFFD7CEE9),
+    outlineVariant = SpendlyLightDivider
 )
 
+private val SpendlyDarkColorScheme = darkColorScheme(
+    primary = SpendlyLavenderLight,
+    onPrimary = Color(0xFF231347),
+    primaryContainer = Color(0xFF392B5D),
+    onPrimaryContainer = SpendlyLavenderContainer,
+    secondary = SpendlyMint,
+    onSecondary = Color(0xFF0E3327),
+    secondaryContainer = Color(0xFF1A3A30),
+    onSecondaryContainer = SpendlyMint,
+    tertiary = SpendlySky,
+    onTertiary = Color(0xFF0C2E42),
+    tertiaryContainer = Color(0xFF184159),
+    onTertiaryContainer = SpendlySkyTint,
+    background = SpendlyDarkBackground,
+    onBackground = SpendlyDarkText,
+    surface = SpendlyDarkSurface,
+    onSurface = SpendlyDarkText,
+    surfaceVariant = SpendlyDarkSurfaceVariant,
+    onSurfaceVariant = SpendlyDarkTextMuted,
+    error = SpendlyCoral,
+    onError = Color(0xFF4B1618),
+    errorContainer = Color(0xFF472226),
+    onErrorContainer = SpendlyCoral,
+    outline = Color(0xFF473F5E),
+    outlineVariant = SpendlyDarkDivider
+)
+
+/**
+ * Convenience accessor for the active [SpendlyColors] inside [MaterialTheme].
+ */
+val MaterialTheme.spendlyColors: SpendlyColors
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalSpendlyColors.current
+
+/**
+ * Root theme for Spendly combining Material 3 color/shape/typography tokens with [LocalSpendlyColors].
+ */
 @Composable
-fun Nhoms8Theme(
+fun SpendlyTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -45,14 +89,37 @@ fun Nhoms8Theme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> SpendlyDarkColorScheme
+        else -> SpendlyLightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
+    val spendlyColors = if (darkTheme) DarkSpendlyColors else LightSpendlyColors
+
+    CompositionLocalProvider(LocalSpendlyColors provides spendlyColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            shapes = SpendlyShapes,
+            typography = SpendlyTypography,
+            content = content
+        )
+    }
+}
+
+/**
+ * Backward-compatible theme entry point delegating to [SpendlyTheme].
+ * Preserves the exact signature used by existing screens and previews while applying
+ * Spendly's branded Lavender/Organic palette consistently across Android versions.
+ */
+@Suppress("UNUSED_PARAMETER")
+@Composable
+fun Nhoms8Theme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    SpendlyTheme(
+        darkTheme = darkTheme,
+        dynamicColor = false,
         content = content
     )
 }

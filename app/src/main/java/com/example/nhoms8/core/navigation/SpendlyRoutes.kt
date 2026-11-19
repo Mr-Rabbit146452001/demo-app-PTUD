@@ -38,6 +38,10 @@ object SpendlyRoutes {
     const val ADD_INCOME = "add_income/{$ARG_GROUP_ID}"
     const val EXPENSE_DETAIL = "expense_detail/{$ARG_GROUP_ID}/{$ARG_EXPENSE_ID}"
 
+    // Settlement V2 & 4-Level Budget Management routes
+    const val SETTLEMENT_V2 = "settlement_v2/{$ARG_GROUP_ID}"
+    const val BUDGETS = "budgets/{$ARG_GROUP_ID}"
+
     // AI Chatbot route
     const val CHATBOT = "chatbot"
 
@@ -65,6 +69,10 @@ object SpendlyRoutes {
 
     fun expenseDetail(groupId: String, expenseId: String): String =
         "expense_detail/${Uri.encode(groupId)}/${Uri.encode(expenseId)}"
+
+    fun settlementV2(groupId: String): String = "settlement_v2/${Uri.encode(groupId)}"
+
+    fun budgets(groupId: String): String = "budgets/${Uri.encode(groupId)}"
 
     fun tabForRoute(route: String?): SpendlyTab? = when (route) {
         HOME -> SpendlyTab.HOME

@@ -1,7 +1,9 @@
 package com.example.nhoms8.data
 
 import com.example.nhoms8.data.firestore.FirestoreSpendlyRepository
+import com.example.nhoms8.domain.repository.BudgetRepository
 import com.example.nhoms8.domain.repository.GroupRepository
+import com.example.nhoms8.domain.repository.SettlementRepository
 import com.example.nhoms8.domain.repository.TransactionRepository
 import com.example.nhoms8.domain.repository.UserRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +34,12 @@ object SpendlyServiceLocator {
         get() = spendlyRepository
 
     val transactionRepository: TransactionRepository
+        get() = spendlyRepository
+
+    val settlementRepository: SettlementRepository
+        get() = spendlyRepository
+
+    val budgetRepository: BudgetRepository
         get() = spendlyRepository
 
     val activeGroupId: MutableStateFlow<String?> by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

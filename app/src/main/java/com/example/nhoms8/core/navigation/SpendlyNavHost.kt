@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,11 +34,9 @@ import com.example.nhoms8.BottomNavTab
 import com.example.nhoms8.ChatbotScreen
 import com.example.nhoms8.DebtItem
 import com.example.nhoms8.EditMemberScreen
-import com.example.nhoms8.ExpenseCategory
 import com.example.nhoms8.FinancialReportScreen
 import com.example.nhoms8.GroupMember
-import com.example.nhoms8.HistoryItemType
-import com.example.nhoms8.HistoryTransactionItem
+import com.example.nhoms8.HomeFundItem
 import com.example.nhoms8.HomeScreen
 import com.example.nhoms8.LoginScreen
 import com.example.nhoms8.MemberBalanceStatus
@@ -49,7 +48,6 @@ import com.example.nhoms8.ProfileScreen
 import com.example.nhoms8.RecentTransaction
 import com.example.nhoms8.SettlementScreen
 import com.example.nhoms8.SignUpScreen
-import com.example.nhoms8.TransactionDateGroup
 import com.example.nhoms8.TransactionHistoryScreen
 import com.example.nhoms8.TransactionIconType
 import com.example.nhoms8.WelcomeScreen
@@ -62,14 +60,18 @@ import com.example.nhoms8.domain.model.RecordStatus
 import com.example.nhoms8.domain.model.SpendlyCategory
 import com.example.nhoms8.domain.model.SpendlyUser
 import com.example.nhoms8.feature.auth.ForgotPasswordScreen
+import com.example.nhoms8.feature.budgets.BudgetManagementScreen
+import com.example.nhoms8.feature.budgets.BudgetViewModel
 import com.example.nhoms8.feature.groups.CreateGroupScreen
 import com.example.nhoms8.feature.groups.GroupDetailScreen
 import com.example.nhoms8.feature.groups.GroupDetailUiState
-import com.example.nhoms8.feature.groups.GroupListUiState
 import com.example.nhoms8.feature.groups.GroupListScreen
+import com.example.nhoms8.feature.groups.GroupListUiState
 import com.example.nhoms8.feature.groups.GroupViewModel
 import com.example.nhoms8.feature.groups.JoinGroupScreen
 import com.example.nhoms8.feature.notifications.NotificationsScreen
+import com.example.nhoms8.feature.settlements.SettlementV2Screen
+import com.example.nhoms8.feature.settlements.SettlementViewModel
 import com.example.nhoms8.feature.transactions.AddEditExpenseScreen
 import com.example.nhoms8.feature.transactions.AddIncomeScreen
 import com.example.nhoms8.feature.transactions.AddTransactionModalSheet
@@ -98,7 +100,8 @@ import java.util.Locale
 
 /**
  * Trung tâm điều hướng Navigation Compose của Spendly kết nối Onboarding, Auth,
- * Hub 5 tab kính mờ Haze 2.1.0, Đa quỹ nhóm, Sổ cái Thu/Chi/Chia tiền V2 và FinSprout AI.
+ * Hub 5 tab kính mờ Haze 2.1.0, Đa quỹ nhóm, Sổ cái Thu/Chi/Chia tiền V2,
+ * Đối soát V2, Quản lý Ngân sách 4 cấp độ và FinSprout AI.
  */
 @Composable
 fun SpendlyNavHost(
@@ -116,6 +119,20 @@ fun SpendlyNavHost(
         factory = TransactionViewModel.factory(
             groupRepository = SpendlyServiceLocator.groupRepository,
             transactionRepository = SpendlyServiceLocator.transactionRepository
+        )
+    ),
+    settlementViewModel: SettlementViewModel = viewModel(
+        factory = SettlementViewModel.factory(
+            groupRepository = SpendlyServiceLocator.groupRepository,
+            transactionRepository = SpendlyServiceLocator.transactionRepository,
+            settlementRepository = SpendlyServiceLocator.settlementRepository
+        )
+    ),
+    budgetViewModel: BudgetViewModel = viewModel(
+        factory = BudgetViewModel.factory(
+            groupRepository = SpendlyServiceLocator.groupRepository,
+            transactionRepository = SpendlyServiceLocator.transactionRepository,
+            budgetRepository = SpendlyServiceLocator.budgetRepository
         )
     ),
     navController: NavHostController = rememberNavController(),
@@ -136,6 +153,15 @@ fun SpendlyNavHost(
 
     val bottomBarHazeState = rememberHazeState()
     var showAddSheet by remember { mutableStateOf(false) }
+
+    // Trạng thái bộ lọc Lịch sử giao dịch & Báo cáo tài chính
+    val defaultMonthYearLabel = remember { "${currentMonthLabel()}/${currentYear()}" }
+    var historySearchQuery by rememberSaveable { mutableStateOf("") }
+    var historySelectedScope by rememberSaveable { mutableStateOf("Nhóm") }
+    var historySelectedMemberId by rememberSaveable { mutableStateOf<String?>(null) }
+    var historySelectedCategoryLabel by rememberSaveable { mutableStateOf<String?>(null) }
+    var historySelectedMonthLabel by rememberSaveable { mutableStateOf<String?>(null) }
+    var reportActiveMonthLabel by rememberSaveable { mutableStateOf(defaultMonthYearLabel) }
 
     // Kết nối SpendTogetherViewModel với repository Firestore dùng chung & đồng bộ phiên Firebase hiện tại
     LaunchedEffect(Unit) {
@@ -471,6 +497,41 @@ fun SpendlyNavHost(
                         spendTogetherUiState.recentTransactions
                     }
 
+                    val (youOwe, youAreOwed) = SpendlyAnalyticsHelpers.computePersonalDebtSummary(
+                        transfers = activeGroupDetail.simplifiedTransfers,
+                        currentUserId = currentUser.uid
+                    )
+                    val youOweFormatted = FintechAlgorithm.formatVnd(youOwe)
+                    val youAreOwedFormatted = FintechAlgorithm.formatVnd(youAreOwed)
+
+                    val fundsList = remember(groupsUiState.groups, groupsUiState.groupStats) {
+                        groupsUiState.groups.map { g ->
+                            val stats = groupsUiState.statsFor(g.groupId)
+                            HomeFundItem(
+                                groupId = g.groupId,
+                                name = g.name,
+                                balanceFormatted = FintechAlgorithm.formatVnd(stats.balance),
+                                memberCount = g.memberCount.coerceAtLeast(1),
+                                transactionCount = stats.transactionCount,
+                                budgetRatio = stats.budgetRatio
+                            )
+                        }
+                    }
+
+                    val budgetUsageRatio = if (hasLiveGroup) {
+                        activeGroupDetail.budgetRatio
+                    } else {
+                        val limit = spendTogetherUiState.budget.monthlyLimit.takeIf { it > 0L } ?: 10_000_000L
+                        spendTogetherUiState.budget.spentAmount.toFloat() / limit.toFloat()
+                    }
+
+                    val aiSuggestionText = SpendlyAnalyticsHelpers.buildHomeAiSuggestion(
+                        budgetRatio = budgetUsageRatio,
+                        youOwe = youOwe,
+                        youAreOwed = youAreOwed,
+                        groupName = displayGroupName
+                    )
+
                     HomeScreen(
                         userName = displayUserName,
                         userInitials = displayUserInitials,
@@ -526,6 +587,34 @@ fun SpendlyNavHost(
                         showBottomBar = false,
                         onReportsClicked = {
                             navController.navigate(SpendlyRoutes.REPORTS)
+                        },
+                        youOweFormatted = youOweFormatted,
+                        youAreOwedFormatted = youAreOwedFormatted,
+                        budgetUsageRatio = budgetUsageRatio,
+                        fundsList = fundsList,
+                        aiSuggestionText = aiSuggestionText,
+                        onGroupsClicked = {
+                            navigateToTopLevelTab(SpendlyRoutes.GROUPS)
+                        },
+                        onFundClicked = { gId ->
+                            activateGroupEverywhere(gId, groupViewModel, spendTogetherViewModel)
+                            navController.navigate(SpendlyRoutes.groupDetail(gId))
+                        },
+                        onSettlementClicked = {
+                            val gId = resolveEffectiveGroupId(groupsUiState)
+                            if (!gId.isNullOrBlank()) {
+                                navController.navigate(SpendlyRoutes.settlementV2(gId))
+                            } else {
+                                navController.navigate(SpendlyRoutes.SETTLEMENT)
+                            }
+                        },
+                        onBudgetsClicked = {
+                            val gId = resolveEffectiveGroupId(groupsUiState)
+                            if (!gId.isNullOrBlank()) {
+                                navController.navigate(SpendlyRoutes.budgets(gId))
+                            } else {
+                                navigateToTopLevelTab(SpendlyRoutes.GROUPS)
+                            }
                         }
                     )
                 }
@@ -560,6 +649,21 @@ fun SpendlyNavHost(
                         else -> {
                             "${spendTogetherUiState.members.size} thành viên · ${spendTogetherUiState.budget.totalBalanceFormatted}"
                         }
+                    }
+
+                    val (profileYouOwe, profileYouAreOwed) = SpendlyAnalyticsHelpers.computePersonalDebtSummary(
+                        transfers = activeGroupDetail.simplifiedTransfers,
+                        currentUserId = currentUser.uid
+                    )
+                    val personalDebtsSummary = when {
+                        profileYouOwe > 0L && profileYouAreOwed > 0L ->
+                            "Bạn nợ ${FintechAlgorithm.formatVnd(profileYouOwe)} · Được trả ${FintechAlgorithm.formatVnd(profileYouAreOwed)}"
+                        profileYouOwe > 0L ->
+                            "Bạn đang nợ ${FintechAlgorithm.formatVnd(profileYouOwe)}"
+                        profileYouAreOwed > 0L ->
+                            "Được hoàn trả ${FintechAlgorithm.formatVnd(profileYouAreOwed)}"
+                        else ->
+                            "Không có khoản nợ tồn đọng"
                     }
 
                     ProfileScreen(
@@ -614,7 +718,28 @@ fun SpendlyNavHost(
                                 launchSingleTop = true
                             }
                         },
-                        showBottomBar = false
+                        showBottomBar = false,
+                        onPersonalHistoryClicked = {
+                            historySelectedScope = "Cá nhân"
+                            navController.navigate(SpendlyRoutes.HISTORY)
+                        },
+                        onPersonalBudgetClicked = {
+                            val gId = resolveEffectiveGroupId(groupsUiState)
+                            if (!gId.isNullOrBlank()) {
+                                navController.navigate(SpendlyRoutes.budgets(gId))
+                            } else {
+                                navigateToTopLevelTab(SpendlyRoutes.GROUPS)
+                            }
+                        },
+                        onPersonalDebtsClicked = {
+                            val gId = resolveEffectiveGroupId(groupsUiState)
+                            if (!gId.isNullOrBlank()) {
+                                navController.navigate(SpendlyRoutes.settlementV2(gId))
+                            } else {
+                                navController.navigate(SpendlyRoutes.SETTLEMENT)
+                            }
+                        },
+                        personalDebtsSummary = personalDebtsSummary
                     )
                 }
 
@@ -728,12 +853,52 @@ fun SpendlyNavHost(
                             navController.navigate(SpendlyRoutes.expenseDetail(groupId, expId))
                         },
                         onOpenFullSettlement = {
-                            navController.navigate(SpendlyRoutes.SETTLEMENT)
+                            navController.navigate(SpendlyRoutes.settlementV2(groupId))
                         },
                         onOpenFullReport = {
                             navController.navigate(SpendlyRoutes.REPORTS)
                         },
+                        onOpenBudgets = {
+                            navController.navigate(SpendlyRoutes.budgets(groupId))
+                        },
                         onLeftGroup = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
+
+                // ==================== SETTLEMENT V2 & BUDGETS 4-LEVEL ====================
+
+                composable(
+                    route = SpendlyRoutes.SETTLEMENT_V2,
+                    arguments = listOf(
+                        navArgument(SpendlyRoutes.ARG_GROUP_ID) { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val groupId = backStackEntry.arguments?.getString(SpendlyRoutes.ARG_GROUP_ID).orEmpty()
+                    SettlementV2Screen(
+                        groupId = groupId,
+                        currentUserId = currentUser.uid,
+                        currentUserName = currentUser.fullName,
+                        viewModel = settlementViewModel,
+                        onBackClicked = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
+
+                composable(
+                    route = SpendlyRoutes.BUDGETS,
+                    arguments = listOf(
+                        navArgument(SpendlyRoutes.ARG_GROUP_ID) { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val groupId = backStackEntry.arguments?.getString(SpendlyRoutes.ARG_GROUP_ID).orEmpty()
+                    BudgetManagementScreen(
+                        groupId = groupId,
+                        currentUserId = currentUser.uid,
+                        viewModel = budgetViewModel,
+                        onBackClicked = {
                             navController.popBackStack()
                         }
                     )
@@ -847,36 +1012,80 @@ fun SpendlyNavHost(
 
                 composable(SpendlyRoutes.HISTORY) {
                     val hasLiveGroup = !activeGroupId.isNullOrBlank() && activeGroupDetail.group != null
-                    val displayGroups = if (hasLiveGroup) {
-                        buildHistoryDateGroups(activeGroupDetail)
+                    val currentMonthYear = "${currentMonthLabel()}/${currentYear()}"
+                    val availableMembers = if (hasLiveGroup) {
+                        activeGroupDetail.members.map { it.userId to it.displayName }
                     } else {
-                        spendTogetherUiState.historyGroups
+                        spendTogetherUiState.members.map { it.id to it.name }
                     }
+                    val availableMonths = SpendlyAnalyticsHelpers.extractAvailableMonths(
+                        expenses = activeGroupDetail.expenses,
+                        incomes = activeGroupDetail.incomes,
+                        currentMonthYearLabel = currentMonthYear
+                    )
+                    val availableCategories = remember {
+                        SpendlyCategory.entries.map { it.label } + "Thu quỹ"
+                    }
+
+                    val displayGroups = if (hasLiveGroup) {
+                        SpendlyAnalyticsHelpers.filterHistoryTransactions(
+                            expenses = activeGroupDetail.expenses,
+                            incomes = activeGroupDetail.incomes,
+                            memberNamesById = activeGroupDetail.memberNamesById,
+                            currentUserId = currentUser.uid,
+                            searchQuery = historySearchQuery,
+                            selectedScope = historySelectedScope,
+                            selectedMemberId = historySelectedMemberId,
+                            selectedCategoryLabel = historySelectedCategoryLabel,
+                            selectedMonthLabel = historySelectedMonthLabel
+                        )
+                    } else {
+                        val selectedMemberName = historySelectedMemberId?.let { id ->
+                            availableMembers.firstOrNull { it.first == id }?.second ?: id
+                        }
+                        SpendlyAnalyticsHelpers.filterLegacyHistoryGroups(
+                            groups = spendTogetherUiState.historyGroups,
+                            currentUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name },
+                            searchQuery = historySearchQuery,
+                            selectedScope = historySelectedScope,
+                            selectedMemberName = selectedMemberName,
+                            selectedCategoryLabel = historySelectedCategoryLabel,
+                            selectedMonthLabel = historySelectedMonthLabel,
+                            currentMonthYearLabel = currentMonthYear
+                        )
+                    }
+
                     val totalCount = if (hasLiveGroup) {
-                        displayGroups.sumOf { it.transactions.size }
+                        activeGroupDetail.expenses.count { it.status == RecordStatus.ACTIVE } +
+                            activeGroupDetail.incomes.count { it.status == RecordStatus.ACTIVE }
                     } else {
                         spendTogetherUiState.recentTransactions.size
                     }
 
                     TransactionHistoryScreen(
                         totalTransactionsCount = totalCount,
-                        monthText = "${currentMonthLabel()}/${currentYear()}",
+                        monthText = currentMonthYear,
                         transactionGroups = displayGroups,
-                        onSearchClicked = {
-                            Toast.makeText(context, "Mở thanh tìm kiếm giao dịch", Toast.LENGTH_SHORT).show()
-                        },
-                        onFilterMemberClicked = {
-                            Toast.makeText(context, "Lọc theo thành viên", Toast.LENGTH_SHORT).show()
-                        },
-                        onFilterMonthClicked = {
-                            Toast.makeText(context, "Chọn tháng lọc", Toast.LENGTH_SHORT).show()
-                        },
-                        onFilterCategoryClicked = {
-                            Toast.makeText(context, "Lọc theo danh mục chi tiêu", Toast.LENGTH_SHORT).show()
-                        },
+                        searchQuery = historySearchQuery,
+                        onSearchQueryChange = { historySearchQuery = it },
+                        selectedScope = historySelectedScope,
+                        onScopeSelected = { historySelectedScope = it },
+                        availableMembers = availableMembers,
+                        selectedMemberId = historySelectedMemberId,
+                        onMemberSelected = { historySelectedMemberId = it },
+                        availableCategories = availableCategories,
+                        selectedCategoryLabel = historySelectedCategoryLabel,
+                        onCategorySelected = { historySelectedCategoryLabel = it },
+                        availableMonths = availableMonths,
+                        selectedMonthLabel = historySelectedMonthLabel,
+                        onMonthSelected = { historySelectedMonthLabel = it },
                         onClearFilterClicked = {
+                            historySearchQuery = ""
+                            historySelectedScope = "Nhóm"
+                            historySelectedMemberId = null
+                            historySelectedCategoryLabel = null
+                            historySelectedMonthLabel = null
                             spendTogetherViewModel.onClearFilter()
-                            Toast.makeText(context, "Đã xóa toàn bộ bộ lọc", Toast.LENGTH_SHORT).show()
                         },
                         onTransactionClicked = { tx ->
                             val liveGroupId = activeGroupDetail.group?.groupId
@@ -897,12 +1106,16 @@ fun SpendlyNavHost(
                         },
                         onNavTabSelected = { tab ->
                             handleLegacyTabNavigation(tab, navController, ::navigateToTopLevelTab)
+                        },
+                        onBackClicked = {
+                            navController.popBackStack()
                         }
                     )
                 }
 
                 composable(SpendlyRoutes.REPORTS) {
                     val hasLiveGroup = !activeGroupId.isNullOrBlank() && activeGroupDetail.group != null
+                    val currentMonthYear = "${currentMonthLabel()}/${currentYear()}"
                     val reportGroupName = if (hasLiveGroup) {
                         activeGroupDetail.group?.name.orEmpty()
                     } else {
@@ -944,6 +1157,19 @@ fun SpendlyNavHost(
                         spendTogetherUiState.highestSpenderNote
                     }
 
+                    val availableMonths = SpendlyAnalyticsHelpers.extractAvailableMonths(
+                        expenses = activeGroupDetail.expenses,
+                        incomes = activeGroupDetail.incomes,
+                        currentMonthYearLabel = currentMonthYear
+                    )
+                    val monthlyTrendPoints = SpendlyAnalyticsHelpers.computeMonthlyTrendPoints(
+                        expenses = activeGroupDetail.expenses
+                    )
+                    val monthComparisonPercent = SpendlyAnalyticsHelpers.computeMonthOverMonthPercent(
+                        expenses = activeGroupDetail.expenses,
+                        targetMonthLabel = reportActiveMonthLabel
+                    )
+
                     FinancialReportScreen(
                         groupTitle = "Báo cáo",
                         groupSubtitle = "Phân tích $reportGroupName",
@@ -954,6 +1180,16 @@ fun SpendlyNavHost(
                         categoryBreakdown = categoryItems,
                         memberBreakdown = memberItems,
                         highestSpenderNote = topSpenderNote,
+                        monthlyTrendPoints = monthlyTrendPoints,
+                        monthComparisonPercent = monthComparisonPercent,
+                        activeMonthLabel = reportActiveMonthLabel,
+                        availableMonths = availableMonths,
+                        onMonthSelected = { selectedMonth ->
+                            reportActiveMonthLabel = selectedMonth
+                        },
+                        onBackClicked = {
+                            navController.popBackStack()
+                        },
                         onExportReportClicked = {
                             Toast.makeText(
                                 context,
@@ -1216,13 +1452,6 @@ private data class HomeLedgerFeedItem(
     val recentTransaction: RecentTransaction
 )
 
-private data class HistoryLedgerFeedItem(
-    val dateHeader: String,
-    val sortTimestamp: Long,
-    val signedAmount: Long,
-    val historyItem: HistoryTransactionItem
-)
-
 private fun buildHomeRecentTransactions(detail: GroupDetailUiState): List<RecentTransaction> {
     val expenseItems = detail.expenses
         .filter { it.status == RecordStatus.ACTIVE }
@@ -1272,73 +1501,6 @@ private fun buildHomeRecentTransactions(detail: GroupDetailUiState): List<Recent
         .sortedByDescending { it.sortTimestamp }
         .take(10)
         .map { it.recentTransaction }
-}
-
-private fun buildHistoryDateGroups(detail: GroupDetailUiState): List<TransactionDateGroup> {
-    val expenseItems = detail.expenses
-        .filter { it.status == RecordStatus.ACTIVE }
-        .map { exp ->
-            val ts = exp.expenseDateMillis.takeIf { it > 0L } ?: exp.createdAtMillis
-            val payer = exp.payerName.ifBlank {
-                detail.memberNamesById[exp.payerId].orEmpty().ifBlank { "Thành viên" }
-            }
-            val header = formatFullRelativeDate(ts)
-            HistoryLedgerFeedItem(
-                dateHeader = header,
-                sortTimestamp = ts,
-                signedAmount = -exp.amount,
-                historyItem = HistoryTransactionItem(
-                    id = exp.expenseId,
-                    title = exp.title,
-                    subtitle = "${formatShortRelativeDate(ts)} · $payer đã trả",
-                    amountFormatted = "-${FintechAlgorithm.formatVnd(exp.amount)}",
-                    isIncome = false,
-                    type = when (exp.category) {
-                        SpendlyCategory.HOUSING,
-                        SpendlyCategory.UTILITIES -> HistoryItemType.INTERNET
-                        SpendlyCategory.TRANSPORT -> HistoryItemType.TAXI
-                        SpendlyCategory.FOOD -> HistoryItemType.COFFEE
-                        else -> HistoryItemType.GROCERY
-                    }
-                )
-            )
-        }
-
-    val incomeItems = detail.incomes
-        .filter { it.status == RecordStatus.ACTIVE }
-        .map { inc ->
-            val ts = inc.incomeDateMillis.takeIf { it > 0L } ?: inc.createdAtMillis
-            val payer = inc.payerName.ifBlank {
-                detail.memberNamesById[inc.payerId].orEmpty().ifBlank { "Thành viên" }
-            }
-            val header = formatFullRelativeDate(ts)
-            HistoryLedgerFeedItem(
-                dateHeader = header,
-                sortTimestamp = ts,
-                signedAmount = inc.amount,
-                historyItem = HistoryTransactionItem(
-                    id = inc.incomeId,
-                    title = inc.title,
-                    subtitle = "${formatShortRelativeDate(ts)} · $payer nạp quỹ",
-                    amountFormatted = "+${FintechAlgorithm.formatVnd(inc.amount)}",
-                    isIncome = true,
-                    type = HistoryItemType.DEPOSIT
-                )
-            )
-        }
-
-    return (expenseItems + incomeItems)
-        .sortedByDescending { it.sortTimestamp }
-        .groupBy { it.dateHeader }
-        .map { (header, entries) ->
-            val netTotal = entries.sumOf { it.signedAmount }
-            val sign = if (netTotal >= 0L) "+" else ""
-            TransactionDateGroup(
-                dateHeader = header,
-                netTotalFormatted = "$sign${FintechAlgorithm.formatVnd(netTotal)}",
-                transactions = entries.map { it.historyItem }
-            )
-        }
 }
 
 private fun buildCategoryReportItems(detail: GroupDetailUiState): List<CategoryReportItem> {
@@ -1481,15 +1643,6 @@ private fun formatShortRelativeDate(millis: Long): String {
         isSameDay(millis, 0) -> "Hôm nay"
         isSameDay(millis, -1) -> "Hôm qua"
         else -> SimpleDateFormat("dd/MM", Locale.forLanguageTag("vi-VN")).format(Date(millis))
-    }
-}
-
-private fun formatFullRelativeDate(millis: Long): String {
-    if (millis <= 0L) return "Hôm nay"
-    return when {
-        isSameDay(millis, 0) -> "Hôm nay"
-        isSameDay(millis, -1) -> "Hôm qua"
-        else -> SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("vi-VN")).format(Date(millis))
     }
 }
 

@@ -220,6 +220,7 @@ fun GroupDetailScreen(
     onExpenseClicked: (String) -> Unit = {},
     onOpenFullSettlement: () -> Unit = {},
     onOpenFullReport: () -> Unit = {},
+    onOpenBudgets: () -> Unit = {},
     onLeftGroup: () -> Unit = onBackClick,
     initialTab: GroupDetailTab = GroupDetailTab.OVERVIEW,
     modifier: Modifier = Modifier
@@ -241,6 +242,7 @@ fun GroupDetailScreen(
         onExpenseClicked = onExpenseClicked,
         onOpenFullSettlement = onOpenFullSettlement,
         onOpenFullReport = onOpenFullReport,
+        onOpenBudgets = onOpenBudgets,
         onAddManualMember = { name, phone, role ->
             viewModel.addManualMember(groupId = groupId, name = name, phone = phone, role = role)
         },
@@ -286,6 +288,7 @@ fun GroupDetailContent(
     onExpenseClicked: (String) -> Unit = {},
     onOpenFullSettlement: () -> Unit = {},
     onOpenFullReport: () -> Unit = {},
+    onOpenBudgets: () -> Unit = {},
     onAddManualMember: (name: String, phone: String, role: GroupRole) -> Unit = { _, _, _ -> },
     onUpdateMemberRole: (userId: String, role: GroupRole, canAddExpense: Boolean) -> Unit = { _, _, _ -> },
     onRemoveOrLeaveMember: (userId: String) -> Unit = {},
@@ -403,7 +406,8 @@ fun GroupDetailContent(
                             OverviewTabContent(
                                 group = group,
                                 uiState = uiState,
-                                hazeState = hazeState
+                                hazeState = hazeState,
+                                onOpenBudgets = onOpenBudgets
                             )
                         }
                     }
@@ -468,6 +472,7 @@ fun GroupDetailContent(
                                 hazeState = hazeState,
                                 onShowQrClick = { showQrDialog = true },
                                 onSaveSettings = onUpdateGroupSettings,
+                                onOpenBudgets = onOpenBudgets,
                                 onLeaveGroupClick = { showLeaveConfirmDialog = true }
                             )
                         }
@@ -825,7 +830,8 @@ private fun GroupDetailTabRow(
 private fun OverviewTabContent(
     group: SpendlyGroup,
     uiState: GroupDetailUiState,
-    hazeState: HazeState
+    hazeState: HazeState,
+    onOpenBudgets: () -> Unit = {}
 ) {
     val colors = MaterialTheme.spendlyColors
 
@@ -919,6 +925,14 @@ private fun OverviewTabContent(
             monthlyLimit = group.monthlyBudgetLimit,
             ratio = uiState.budgetRatio,
             hazeState = hazeState
+        )
+
+        SpendlyButton(
+            text = "Quản lý Ngân sách 4 mức",
+            onClick = onOpenBudgets,
+            modifier = Modifier.fillMaxWidth(),
+            style = SpendlyButtonStyle.OUTLINED,
+            leadingIcon = Icons.Rounded.Savings
         )
 
         // Nhật ký hoạt động gần đây
@@ -1854,6 +1868,7 @@ private fun SettingsTabContent(
     hazeState: HazeState,
     onShowQrClick: () -> Unit,
     onSaveSettings: (name: String, description: String, monthlyBudgetLimit: Long) -> Unit,
+    onOpenBudgets: () -> Unit = {},
     onLeaveGroupClick: () -> Unit
 ) {
     val colors = MaterialTheme.spendlyColors
@@ -2011,6 +2026,16 @@ private fun SettingsTabContent(
                 isLoading = isProcessing,
                 enabled = !isProcessing,
                 leadingIcon = Icons.Rounded.Edit
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SpendlyButton(
+                text = "Quản lý Ngân sách 4 mức",
+                onClick = onOpenBudgets,
+                modifier = Modifier.fillMaxWidth(),
+                style = SpendlyButtonStyle.OUTLINED,
+                leadingIcon = Icons.Rounded.Savings
             )
         }
 

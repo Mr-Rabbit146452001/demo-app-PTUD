@@ -23,9 +23,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.GroupAdd
+import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Savings
@@ -52,7 +55,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.nhoms8.core.designsystem.GlassCard
 import com.example.nhoms8.core.designsystem.OrganicBackground
+import com.example.nhoms8.core.designsystem.SpendlyButton
+import com.example.nhoms8.core.designsystem.SpendlyButtonStyle
 import com.example.nhoms8.domain.model.GroupActivity
+import com.example.nhoms8.domain.model.SpendlyJoinRequest
 import com.example.nhoms8.domain.model.SpendlyNotification
 import com.example.nhoms8.feature.groups.GroupViewModel
 import com.example.nhoms8.feature.groups.NotificationActivityItem
@@ -78,25 +84,52 @@ private enum class NotificationFeedFilter(val label: String) {
 fun NotificationsScreen(
     viewModel: GroupViewModel,
     onNavigateToGroup: (String) -> Unit,
+    onNavigateToGroupMembers: (String) -> Unit = onNavigateToGroup,
     modifier: Modifier = Modifier
 ) {
     val notifications by viewModel.notifications.collectAsStateWithLifecycle()
     val recentActivities by viewModel.recentActivities.collectAsStateWithLifecycle()
+    val pendingJoinRequests by viewModel.incomingJoinRequestsForManager.collectAsStateWithLifecycle()
+    val groupsUiState by viewModel.groupsUiState.collectAsStateWithLifecycle()
 
     NotificationsContent(
         notifications = notifications,
         recentActivities = recentActivities,
+        pendingJoinRequests = pendingJoinRequests,
+        isProcessingRequests = groupsUiState.isSubmitting,
         onNotificationClick = { notification ->
             viewModel.markNotificationRead(notification.id)
             if (notification.groupId.isNotBlank()) {
                 viewModel.setActiveGroup(notification.groupId)
-                onNavigateToGroup(notification.groupId)
+                if (notification.type == "JOIN_REQUEST") {
+                    onNavigateToGroupMembers(notification.groupId)
+                } else {
+                    onNavigateToGroup(notification.groupId)
+                }
             }
         },
         onActivityClick = { activity ->
             if (activity.groupId.isNotBlank()) {
                 viewModel.setActiveGroup(activity.groupId)
                 onNavigateToGroup(activity.groupId)
+            }
+        },
+        onApproveJoinRequest = { request ->
+            viewModel.approveJoinRequest(
+                groupId = request.groupId,
+                requestUserId = request.userId
+            )
+        },
+        onRejectJoinRequest = { request ->
+            viewModel.rejectJoinRequest(
+                groupId = request.groupId,
+                requestUserId = request.userId
+            )
+        },
+        onOpenJoinRequestGroup = { request ->
+            if (request.groupId.isNotBlank()) {
+                viewModel.setActiveGroup(request.groupId)
+                onNavigateToGroupMembers(request.groupId)
             }
         },
         onMarkAllReadClick = viewModel::markAllNotificationsRead,
@@ -111,8 +144,13 @@ fun NotificationsScreen(
 fun NotificationsContent(
     notifications: List<SpendlyNotification>,
     recentActivities: List<NotificationActivityItem>,
+    pendingJoinRequests: List<SpendlyJoinRequest> = emptyList(),
+    isProcessingRequests: Boolean = false,
     onNotificationClick: (SpendlyNotification) -> Unit = {},
     onActivityClick: (GroupActivity) -> Unit = {},
+    onApproveJoinRequest: (SpendlyJoinRequest) -> Unit = {},
+    onRejectJoinRequest: (SpendlyJoinRequest) -> Unit = {},
+    onOpenJoinRequestGroup: (SpendlyJoinRequest) -> Unit = {},
     onMarkAllReadClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -217,7 +255,7 @@ fun NotificationsContent(
                 }
             }
 
-            val isCompletelyEmpty = (!showNotifications || notifications.isEmpty()) &&
+            val isCompletelyEmpty = (!showNotifications || (notifications.isEmpty() && pendingJoinRequests.isEmpty())) &&
                 (!showActivities || recentActivities.isEmpty())
 
             if (isCompletelyEmpty) {
@@ -225,6 +263,31 @@ fun NotificationsContent(
                     EmptyNotificationsCard(hazeState = hazeState)
                 }
             } else {
+                if (showNotifications && pendingJoinRequests.isNotEmpty()) {
+                    item(key = "pending_approvals_title") {
+                        Text(
+                            text = "Yêu cầu tham gia chờ duyệt (${pendingJoinRequests.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.textPrimary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+
+                    items(
+                        items = pendingJoinRequests,
+                        key = { "join_req_${it.groupId}_${it.userId}" }
+                    ) { request ->
+                        IncomingJoinRequestCard(
+                            request = request,
+                            isProcessing = isProcessingRequests,
+                            hazeState = hazeState,
+                            onApproveClick = { onApproveJoinRequest(request) },
+                            onRejectClick = { onRejectJoinRequest(request) },
+                            onOpenGroupClick = { onOpenJoinRequestGroup(request) }
+                        )
+                    }
+                }
+
                 if (showNotifications && notifications.isNotEmpty()) {
                     item(key = "notif_section_title") {
                         Text(
@@ -510,7 +573,119 @@ private fun EmptyNotificationsCard(hazeState: HazeState) {
     }
 }
 
+@Composable
+private fun IncomingJoinRequestCard(
+    request: SpendlyJoinRequest,
+    isProcessing: Boolean,
+    hazeState: HazeState,
+    onApproveClick: () -> Unit,
+    onRejectClick: () -> Unit,
+    onOpenGroupClick: () -> Unit
+) {
+    val colors = MaterialTheme.spendlyColors
+
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(SpendlyShapeTokens.CardLarge)
+            .border(
+                width = 1.3.dp,
+                color = colors.primaryLavender.copy(alpha = 0.65f),
+                shape = SpendlyShapeTokens.CardLarge
+            )
+            .clickable(onClick = onOpenGroupClick),
+        hazeState = hazeState,
+        tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.42f else 0.76f),
+        contentPadding = PaddingValues(15.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(colors.deepLavender),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = request.initials.ifBlank { "TV" },
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(SpendlyShapeTokens.Pill)
+                            .background(colors.lavenderContainer)
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = request.groupName.ifBlank { "Quỹ nhóm" },
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = colors.onLavenderContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Text(
+                        text = "${request.displayName.ifBlank { "Thành viên mới" }} xin vào quỹ",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Text(
+                        text = "Mã mời: ${request.inviteCode} · ${formatNotificationTime(request.createdAtMillis)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textMuted
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SpendlyButton(
+                    text = "Từ chối",
+                    onClick = onRejectClick,
+                    modifier = Modifier.weight(1f),
+                    height = 40.dp,
+                    enabled = !isProcessing,
+                    style = SpendlyButtonStyle.OUTLINED,
+                    leadingIcon = Icons.Rounded.Close
+                )
+                SpendlyButton(
+                    text = "Duyệt",
+                    onClick = onApproveClick,
+                    modifier = Modifier.weight(1f),
+                    height = 40.dp,
+                    enabled = !isProcessing,
+                    style = SpendlyButtonStyle.PRIMARY,
+                    leadingIcon = Icons.Rounded.Check
+                )
+            }
+        }
+    }
+}
+
 private fun notificationIconFor(type: String): ImageVector = when {
+    type.equals("JOIN_REQUEST", ignoreCase = true) -> Icons.Rounded.HourglassTop
+    type.equals("JOIN_REJECTED", ignoreCase = true) -> Icons.Rounded.Cancel
     type.contains("JOIN", ignoreCase = true) -> Icons.Rounded.GroupAdd
     type.contains("EXPENSE", ignoreCase = true) -> Icons.Rounded.ArrowUpward
     type.contains("SETTLE", ignoreCase = true) -> Icons.Rounded.SwapHoriz
@@ -519,9 +694,10 @@ private fun notificationIconFor(type: String): ImageVector = when {
 
 private fun activityFeedIcon(action: String): ImageVector = when (action) {
     "CREATE_EXPENSE", "UPDATE_EXPENSE" -> Icons.Rounded.ArrowUpward
-    "CANCEL_EXPENSE", "CANCEL_INCOME" -> Icons.Rounded.Cancel
+    "CANCEL_EXPENSE", "CANCEL_INCOME", "REJECT_JOIN_REQUEST" -> Icons.Rounded.Cancel
     "CREATE_INCOME" -> Icons.Rounded.Savings
-    "JOIN_GROUP", "ADD_MEMBER" -> Icons.Rounded.GroupAdd
+    "REQUEST_JOIN_GROUP" -> Icons.Rounded.HourglassTop
+    "JOIN_GROUP", "ADD_MEMBER", "APPROVE_JOIN_REQUEST" -> Icons.Rounded.GroupAdd
     "UPDATE_GROUP_SETTINGS" -> Icons.Rounded.Settings
     else -> Icons.Rounded.Group
 }

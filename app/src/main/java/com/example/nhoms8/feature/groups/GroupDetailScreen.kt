@@ -2,6 +2,7 @@ package com.example.nhoms8.feature.groups
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -39,13 +40,17 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.HourglassTop
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Savings
@@ -68,6 +73,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,8 +114,10 @@ import com.example.nhoms8.domain.model.SpendlyExpense
 import com.example.nhoms8.domain.model.SpendlyGroup
 import com.example.nhoms8.domain.model.SpendlyGroupMember
 import com.example.nhoms8.domain.model.SpendlyIncome
+import com.example.nhoms8.domain.model.SpendlyJoinRequest
 import com.example.nhoms8.domain.model.SpendlyUser
 import com.example.nhoms8.domain.usecase.DebtTransfer
+import com.example.nhoms8.feature.groups.qr.QrImageExporter
 import com.example.nhoms8.ui.theme.SpendlyAmber
 import com.example.nhoms8.ui.theme.SpendlyCoralDeep
 import com.example.nhoms8.ui.theme.SpendlyIndigo
@@ -126,6 +134,9 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -268,6 +279,12 @@ fun GroupDetailScreen(
                 monthlyBudgetLimit = limit
             )
         },
+        onApproveJoinRequest = { requestUserId ->
+            viewModel.approveJoinRequest(groupId = groupId, requestUserId = requestUserId)
+        },
+        onRejectJoinRequest = { requestUserId ->
+            viewModel.rejectJoinRequest(groupId = groupId, requestUserId = requestUserId)
+        },
         onDismissMessage = viewModel::clearMessages,
         modifier = modifier
     )
@@ -293,13 +310,15 @@ fun GroupDetailContent(
     onUpdateMemberRole: (userId: String, role: GroupRole, canAddExpense: Boolean) -> Unit = { _, _, _ -> },
     onRemoveOrLeaveMember: (userId: String) -> Unit = {},
     onUpdateGroupSettings: (name: String, description: String, monthlyBudgetLimit: Long) -> Unit = { _, _, _ -> },
+    onApproveJoinRequest: (requestUserId: String) -> Unit = {},
+    onRejectJoinRequest: (requestUserId: String) -> Unit = {},
     onDismissMessage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.spendlyColors
     val hazeState = rememberHazeState()
 
-    var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
+    var selectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
     var showQrDialog by rememberSaveable { mutableStateOf(false) }
     var showAddMemberDialog by rememberSaveable { mutableStateOf(false) }
     var editingMember by remember { mutableStateOf<SpendlyGroupMember?>(null) }
@@ -395,6 +414,7 @@ fun GroupDetailContent(
                 item(key = "tab_bar") {
                     GroupDetailTabRow(
                         selectedTab = selectedTab,
+                        pendingJoinRequestsCount = if (canManageGroup) uiState.pendingJoinRequests.size else 0,
                         onTabSelected = { selectedTab = it },
                         hazeState = hazeState
                     )
@@ -407,6 +427,8 @@ fun GroupDetailContent(
                                 group = group,
                                 uiState = uiState,
                                 hazeState = hazeState,
+                                pendingApprovalsCount = if (canManageGroup) uiState.pendingJoinRequests.size else 0,
+                                onOpenPendingApprovals = { selectedTab = GroupDetailTab.MEMBERS },
                                 onOpenBudgets = onOpenBudgets
                             )
                         }
@@ -417,11 +439,15 @@ fun GroupDetailContent(
                             MembersTabContent(
                                 group = group,
                                 members = uiState.members,
+                                pendingJoinRequests = uiState.pendingJoinRequests,
                                 currentUserId = currentUser.uid,
                                 canManageGroup = canManageGroup,
+                                isProcessing = uiState.isProcessing,
                                 hazeState = hazeState,
                                 onAddMemberClick = { showAddMemberDialog = true },
-                                onMemberClick = { editingMember = it }
+                                onMemberClick = { editingMember = it },
+                                onApproveJoinRequest = onApproveJoinRequest,
+                                onRejectJoinRequest = onRejectJoinRequest
                             )
                         }
                     }
@@ -785,6 +811,7 @@ private fun HeroQuickActionButton(
 @Composable
 private fun GroupDetailTabRow(
     selectedTab: GroupDetailTab,
+    pendingJoinRequestsCount: Int = 0,
     onTabSelected: (GroupDetailTab) -> Unit,
     hazeState: HazeState
 ) {
@@ -802,14 +829,17 @@ private fun GroupDetailTabRow(
         ) {
             items(GroupDetailTab.entries) { tab ->
                 val isSelected = tab == selectedTab
-                Box(
+                val badgeCount = if (tab == GroupDetailTab.MEMBERS) pendingJoinRequestsCount else 0
+                Row(
                     modifier = Modifier
                         .clip(SpendlyShapeTokens.Pill)
                         .background(
                             if (isSelected) colors.deepLavender else Color.Transparent
                         )
                         .clickable { onTabSelected(tab) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = tab.label,
@@ -820,6 +850,27 @@ private fun GroupDetailTabRow(
                         maxLines = 1,
                         softWrap = false
                     )
+                    if (badgeCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .clip(SpendlyShapeTokens.Pill)
+                                .background(
+                                    if (isSelected) Color.White.copy(alpha = 0.24f) else colors.coralContainer
+                                )
+                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = badgeCount.toString(),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = if (isSelected) Color.White else colors.coralDeep,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -831,11 +882,65 @@ private fun OverviewTabContent(
     group: SpendlyGroup,
     uiState: GroupDetailUiState,
     hazeState: HazeState,
+    pendingApprovalsCount: Int = 0,
+    onOpenPendingApprovals: () -> Unit = {},
     onOpenBudgets: () -> Unit = {}
 ) {
     val colors = MaterialTheme.spendlyColors
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (pendingApprovalsCount > 0) {
+            GlassCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(SpendlyShapeTokens.CardLarge)
+                    .border(
+                        width = 1.2.dp,
+                        color = colors.primaryLavender.copy(alpha = 0.6f),
+                        shape = SpendlyShapeTokens.CardLarge
+                    )
+                    .clickable(onClick = onOpenPendingApprovals),
+                hazeState = hazeState,
+                tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.45f else 0.78f),
+                contentPadding = PaddingValues(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(SpendlyShapeTokens.CardSmall)
+                            .background(colors.deepLavender),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.HourglassTop,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "Có $pendingApprovalsCount yêu cầu tham gia đang chờ bạn duyệt",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.textPrimary
+                        )
+                        Text(
+                            text = "Nhấn để mở tab Thành viên và duyệt ngay",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.deepLavender
+                        )
+                    }
+                }
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1164,15 +1269,133 @@ private fun ActivityTimelineRow(activity: GroupActivity) {
 private fun MembersTabContent(
     group: SpendlyGroup,
     members: List<SpendlyGroupMember>,
+    pendingJoinRequests: List<SpendlyJoinRequest> = emptyList(),
     currentUserId: String,
     canManageGroup: Boolean,
+    isProcessing: Boolean = false,
     hazeState: HazeState,
     onAddMemberClick: () -> Unit,
-    onMemberClick: (SpendlyGroupMember) -> Unit
+    onMemberClick: (SpendlyGroupMember) -> Unit,
+    onApproveJoinRequest: (requestUserId: String) -> Unit = {},
+    onRejectJoinRequest: (requestUserId: String) -> Unit = {}
 ) {
     val colors = MaterialTheme.spendlyColors
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (canManageGroup && pendingJoinRequests.isNotEmpty()) {
+            Text(
+                text = "Yêu cầu chờ duyệt (${pendingJoinRequests.size})",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary
+            )
+
+            pendingJoinRequests.forEach { request ->
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.2.dp,
+                            color = colors.primaryLavender.copy(alpha = 0.52f),
+                            shape = SpendlyShapeTokens.CardLarge
+                        ),
+                    hazeState = hazeState,
+                    tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.40f else 0.72f),
+                    contentPadding = PaddingValues(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(colors.deepLavender),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = request.initials.ifBlank { computeInitialsFallback(request.displayName) },
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color.White
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = request.displayName.ifBlank { "Người dùng Spendly" },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = colors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val contactLine = listOf(request.email, request.phone)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" · ")
+                                if (contactLine.isNotBlank()) {
+                                    Text(
+                                        text = contactLine,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.textMuted,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = "Mã mời: ${request.inviteCode} · ${formatTimestamp(request.createdAtMillis)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.textMuted
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(SpendlyShapeTokens.Pill)
+                                    .background(colors.lavenderContainer)
+                                    .padding(horizontal = 9.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Chờ duyệt",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = colors.deepLavender
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SpendlyButton(
+                                text = "Từ chối",
+                                onClick = { onRejectJoinRequest(request.userId) },
+                                modifier = Modifier.weight(1f),
+                                height = 40.dp,
+                                enabled = !isProcessing,
+                                style = SpendlyButtonStyle.OUTLINED,
+                                leadingIcon = Icons.Rounded.Close
+                            )
+                            SpendlyButton(
+                                text = "Duyệt",
+                                onClick = { onApproveJoinRequest(request.userId) },
+                                modifier = Modifier.weight(1f),
+                                height = 40.dp,
+                                enabled = !isProcessing,
+                                style = SpendlyButtonStyle.PRIMARY,
+                                leadingIcon = Icons.Rounded.Check
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2104,9 +2327,12 @@ private fun GroupInviteQrDialog(
 ) {
     val colors = MaterialTheme.spendlyColors
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
+    var isSavingQr by remember { mutableStateOf(false) }
+    var isSharingQr by remember { mutableStateOf(false) }
 
     val qrBitmap = remember(group.inviteCode) {
         generateQrCodeBitmap(
@@ -2193,7 +2419,7 @@ private fun GroupInviteQrDialog(
                         leadingIcon = Icons.Rounded.ContentCopy
                     )
                     SpendlyButton(
-                        text = "Chia sẻ",
+                        text = "Chia sẻ mã",
                         onClick = {
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
@@ -2211,7 +2437,96 @@ private fun GroupInviteQrDialog(
                         },
                         modifier = Modifier.weight(1f),
                         height = 44.dp,
+                        style = SpendlyButtonStyle.SECONDARY_GLASS,
                         leadingIcon = Icons.Rounded.Share
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SpendlyButton(
+                        text = if (isSavingQr) "Đang lưu..." else "Lưu ảnh QR",
+                        onClick = {
+                            if (isSavingQr) return@SpendlyButton
+                            coroutineScope.launch {
+                                isSavingQr = true
+                                val result = withContext(Dispatchers.IO) {
+                                    QrImageExporter.saveQrToGallery(
+                                        context = context,
+                                        groupName = group.name,
+                                        inviteCode = group.inviteCode
+                                    )
+                                }
+                                isSavingQr = false
+                                result.onSuccess {
+                                    Toast.makeText(
+                                        context,
+                                        "Đã lưu ảnh QR vào Thư viện",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }.onFailure { err ->
+                                    Toast.makeText(
+                                        context,
+                                        err.message ?: "Không thể lưu ảnh QR",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        height = 44.dp,
+                        enabled = !isSavingQr && !isSharingQr,
+                        isLoading = isSavingQr,
+                        style = SpendlyButtonStyle.OUTLINED,
+                        leadingIcon = Icons.Rounded.Download
+                    )
+                    SpendlyButton(
+                        text = if (isSharingQr) "Đang tạo..." else "Chia sẻ ảnh",
+                        onClick = {
+                            if (isSharingQr) return@SpendlyButton
+                            coroutineScope.launch {
+                                isSharingQr = true
+                                val uriResult = withContext(Dispatchers.IO) {
+                                    QrImageExporter.createShareableQrUri(
+                                        context = context,
+                                        inviteCode = group.inviteCode
+                                    )
+                                }
+                                isSharingQr = false
+                                uriResult.onSuccess { qrUri ->
+                                    val shareImageIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "image/png"
+                                        putExtra(Intent.EXTRA_STREAM, qrUri)
+                                        putExtra(
+                                            Intent.EXTRA_TEXT,
+                                            "Quét mã QR để tham gia quỹ \"${group.name}\" trên Spendly (mã mời: ${group.inviteCode})"
+                                        )
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    try {
+                                        context.startActivity(
+                                            Intent.createChooser(shareImageIntent, "Chia sẻ ảnh QR quỹ")
+                                        )
+                                    } catch (_: Throwable) {
+                                        clipboardManager.setText(AnnotatedString(group.inviteCode))
+                                        copied = true
+                                    }
+                                }.onFailure { err ->
+                                    Toast.makeText(
+                                        context,
+                                        err.message ?: "Không thể chia sẻ ảnh QR",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        height = 44.dp,
+                        enabled = !isSavingQr && !isSharingQr,
+                        isLoading = isSharingQr,
+                        leadingIcon = Icons.Rounded.Image
                     )
                 }
             }
@@ -2577,7 +2892,8 @@ private fun activityIconFor(action: String): ImageVector = when (action) {
     "CREATE_EXPENSE", "UPDATE_EXPENSE" -> Icons.Rounded.ArrowUpward
     "CANCEL_EXPENSE", "CANCEL_INCOME" -> Icons.Rounded.Cancel
     "CREATE_INCOME" -> Icons.Rounded.Savings
-    "JOIN_GROUP", "ADD_MEMBER" -> Icons.Rounded.PersonAdd
+    "JOIN_GROUP", "ADD_MEMBER", "REQUEST_JOIN_GROUP", "APPROVE_JOIN_REQUEST" -> Icons.Rounded.PersonAdd
+    "REJECT_JOIN_REQUEST" -> Icons.Rounded.Cancel
     "UPDATE_GROUP_SETTINGS" -> Icons.Rounded.Settings
     else -> Icons.Rounded.Group
 }

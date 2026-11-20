@@ -3,12 +3,14 @@ package com.example.nhoms8.domain.repository
 import com.example.nhoms8.domain.model.ExpenseParticipant
 import com.example.nhoms8.domain.model.GroupActivity
 import com.example.nhoms8.domain.model.GroupRole
+import com.example.nhoms8.domain.model.JoinRequestSubmissionResult
 import com.example.nhoms8.domain.model.MemberBalance
 import com.example.nhoms8.domain.model.SpendlyBudget
 import com.example.nhoms8.domain.model.SpendlyExpense
 import com.example.nhoms8.domain.model.SpendlyGroup
 import com.example.nhoms8.domain.model.SpendlyGroupMember
 import com.example.nhoms8.domain.model.SpendlyIncome
+import com.example.nhoms8.domain.model.SpendlyJoinRequest
 import com.example.nhoms8.domain.model.SpendlyNotification
 import com.example.nhoms8.domain.model.SpendlySettlement
 import com.example.nhoms8.domain.model.SpendlyUser
@@ -62,6 +64,32 @@ interface GroupRepository {
         user: SpendlyUser,
         inviteCode: String
     ): Result<SpendlyGroup>
+
+    fun observeGroupJoinRequests(groupId: String): Flow<List<SpendlyJoinRequest>>
+
+    fun observeUserJoinRequests(uid: String): Flow<List<SpendlyJoinRequest>>
+
+    suspend fun requestJoinGroupByInviteCode(
+        user: SpendlyUser,
+        inviteCode: String
+    ): Result<JoinRequestSubmissionResult>
+
+    suspend fun approveJoinRequest(
+        groupId: String,
+        requestUserId: String,
+        reviewer: SpendlyUser
+    ): Result<SpendlyGroupMember>
+
+    suspend fun rejectJoinRequest(
+        groupId: String,
+        requestUserId: String,
+        reviewer: SpendlyUser
+    ): Result<Unit>
+
+    suspend fun cancelJoinRequest(
+        groupId: String,
+        userId: String
+    ): Result<Unit>
 
     suspend fun addManualMember(
         groupId: String,

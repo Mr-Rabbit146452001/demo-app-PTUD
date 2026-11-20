@@ -301,3 +301,54 @@ data class BudgetStatusSummary(
     val usagePercent: Float,
     val level: BudgetHealthLevel
 )
+
+/**
+ * Trạng thái yêu cầu tham gia quỹ nhóm chờ Thủ quỹ / Quản trị viên duyệt.
+ */
+enum class JoinRequestStatus(val label: String) {
+    PENDING("Chờ duyệt"),
+    APPROVED("Đã duyệt"),
+    REJECTED("Từ chối"),
+    CANCELLED("Đã hủy");
+
+    companion object {
+        fun fromRaw(raw: String?): JoinRequestStatus =
+            entries.firstOrNull { it.name.equals(raw?.trim(), ignoreCase = true) } ?: PENDING
+    }
+}
+
+/**
+ * Yêu cầu tham gia quỹ nhóm lưu đồng thời tại:
+ * - `groups/{groupId}/join_requests/{userId}`
+ * - `users/{userId}/join_requests/{groupId}`
+ */
+data class SpendlyJoinRequest(
+    val requestId: String = "",
+    val groupId: String = "",
+    val groupName: String = "",
+    val inviteCode: String = "",
+    val userId: String = "",
+    val displayName: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val initials: String = "",
+    val status: JoinRequestStatus = JoinRequestStatus.PENDING,
+    val createdAtMillis: Long = 0L,
+    val reviewedAtMillis: Long? = null,
+    val reviewedBy: String? = null,
+    val reviewedByName: String? = null
+)
+
+/**
+ * Kết quả sau khi người dùng gửi yêu cầu tham gia quỹ bằng mã mời hoặc mã QR.
+ */
+sealed interface JoinRequestSubmissionResult {
+    data class PendingApproval(
+        val request: SpendlyJoinRequest,
+        val alreadyPending: Boolean = false
+    ) : JoinRequestSubmissionResult
+
+    data class AlreadyMember(
+        val group: SpendlyGroup
+    ) : JoinRequestSubmissionResult
+}

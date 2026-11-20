@@ -4,6 +4,8 @@ import com.example.nhoms8.algorithm.FintechAlgorithm
 import com.example.nhoms8.domain.model.ExpenseParticipant
 import com.example.nhoms8.domain.model.GroupActivity
 import com.example.nhoms8.domain.model.GroupRole
+import com.example.nhoms8.domain.model.JoinRequestStatus
+import com.example.nhoms8.domain.model.JoinRequestSubmissionResult
 import com.example.nhoms8.domain.model.MemberBalance
 import com.example.nhoms8.domain.model.RecordStatus
 import com.example.nhoms8.domain.model.SettlementStatus
@@ -13,6 +15,7 @@ import com.example.nhoms8.domain.model.SpendlyExpense
 import com.example.nhoms8.domain.model.SpendlyGroup
 import com.example.nhoms8.domain.model.SpendlyGroupMember
 import com.example.nhoms8.domain.model.SpendlyIncome
+import com.example.nhoms8.domain.model.SpendlyJoinRequest
 import com.example.nhoms8.domain.model.SpendlyNotification
 import com.example.nhoms8.domain.model.SpendlySettlement
 import com.example.nhoms8.domain.model.SpendlyUser
@@ -81,7 +84,8 @@ class FirestoreSpendlyRepository(
         val budgets: Map<String, List<SpendlyBudget>> = emptyMap(),
         val balances: Map<String, Map<String, MemberBalance>> = emptyMap(),
         val activities: Map<String, List<GroupActivity>> = emptyMap(),
-        val invitations: Map<String, InvitationRecord> = emptyMap()
+        val invitations: Map<String, InvitationRecord> = emptyMap(),
+        val joinRequests: Map<String, Map<String, SpendlyJoinRequest>> = emptyMap()
     )
 
     private val memoryMutex = Mutex()
@@ -789,6 +793,730 @@ class FirestoreSpendlyRepository(
             batch.commit().await()
             updatedGroup
         }
+    }
+
+    override fun observeGroupJoinRequests(groupId: String): Flow<List<SpendlyJoinRequest>> {
+        val db = firestore ?: return memoryDb
+            .map { state ->
+                state.joinRequests[groupId]
+                    ?.values
+                    ?.filter { it.status == JoinRequestStatus.PENDING }
+                    ?.sortedByDescending { it.createdAtMillis }
+                    .orEmpty()
+            }
+            .distinctUntilChanged()
+
+        return callbackFlow {
+            if (groupId.isBlank()) {
+                trySend(emptyList())
+                awaitClose { }
+                return@callbackFlow
+            }
+            val registration = groupCollection(db, groupId, SUBCOLLECTION_JOIN_REQUESTS)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val requests = snapshot?.documents
+                        ?.map { it.toSpendlyJoinRequest(fallbackGroupId = groupId) }
+                        ?.filter { it.status == JoinRequestStatus.PENDING }
+                        ?.sortedByDescending { it.createdAtMillis }
+                        .orEmpty()
+                    trySend(requests)
+                }
+            awaitClose { registration.remove() }
+        }
+    }
+
+    override fun observeUserJoinRequests(uid: String): Flow<List<SpendlyJoinRequest>> {
+        val db = firestore ?: return memoryDb
+            .map { state ->
+                state.joinRequests.values
+                    .mapNotNull { byUser -> byUser[uid] }
+                    .filter { it.status == JoinRequestStatus.PENDING }
+                    .sortedByDescending { it.createdAtMillis }
+            }
+            .distinctUntilChanged()
+
+        return callbackFlow {
+            if (uid.isBlank()) {
+                trySend(emptyList())
+                awaitClose { }
+                return@callbackFlow
+            }
+            val registration = db.collection(COLLECTION_USERS)
+                .document(uid)
+                .collection(SUBCOLLECTION_JOIN_REQUESTS)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error)
+                        return@addSnapshotListener
+                    }
+                    val requests = snapshot?.documents
+                        ?.map { it.toSpendlyJoinRequest(fallbackGroupId = it.id) }
+                        ?.filter { it.status == JoinRequestStatus.PENDING }
+                        ?.sortedByDescending { it.createdAtMillis }
+                        .orEmpty()
+                    trySend(requests)
+                }
+            awaitClose { registration.remove() }
+        }
+    }
+
+    override suspend fun requestJoinGroupByInviteCode(
+        user: SpendlyUser,
+        inviteCode: String
+    ): Result<JoinRequestSubmissionResult> = runCatchingSuspend {
+        require(user.uid.isNotBlank()) { "UID người dùng không được để trống" }
+        val normalizedCode = inviteCode.trim().uppercase()
+        require(normalizedCode.isNotBlank()) { "Mã mời không được để trống" }
+
+        val now = clock()
+        val displayName = user.fullName.trim().ifBlank {
+            user.email.substringBefore('@').ifBlank { "Thành viên" }
+        }
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val invitation = state.invitations[normalizedCode]
+                    ?: throw NoSuchElementException("Mã mời $normalizedCode không tồn tại hoặc đã hết hạn")
+                val group = state.groups[invitation.groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm tương ứng với mã mời")
+                if (group.status != STATUS_ACTIVE) {
+                    throw IllegalStateException("Nhóm này không còn hoạt động")
+                }
+
+                val groupMembers = state.members[group.groupId].orEmpty()
+                val existingMember = groupMembers[user.uid]
+                if (existingMember != null && existingMember.status == STATUS_ACTIVE) {
+                    return@withLock JoinRequestSubmissionResult.AlreadyMember(group)
+                }
+
+                val groupRequests = state.joinRequests[group.groupId].orEmpty()
+                val existingRequest = groupRequests[user.uid]
+                if (existingRequest != null && existingRequest.status == JoinRequestStatus.PENDING) {
+                    return@withLock JoinRequestSubmissionResult.PendingApproval(
+                        request = existingRequest,
+                        alreadyPending = true
+                    )
+                }
+
+                val newRequest = SpendlyJoinRequest(
+                    requestId = user.uid,
+                    groupId = group.groupId,
+                    groupName = group.name,
+                    inviteCode = normalizedCode,
+                    userId = user.uid,
+                    displayName = displayName,
+                    email = user.email.trim(),
+                    phone = user.phone.trim(),
+                    initials = computeInitials(displayName),
+                    status = JoinRequestStatus.PENDING,
+                    createdAtMillis = now
+                )
+
+                val activity = GroupActivity(
+                    activityId = newId("act"),
+                    groupId = group.groupId,
+                    actorId = user.uid,
+                    actorName = displayName,
+                    action = ACTION_REQUEST_JOIN_GROUP,
+                    targetId = user.uid,
+                    description = "$displayName đã gửi yêu cầu tham gia quỹ qua mã mời $normalizedCode",
+                    createdAtMillis = now
+                )
+                val currentActivities = state.activities[group.groupId].orEmpty()
+
+                val recipientIds = buildJoinRequestManagerRecipients(
+                    group = group,
+                    members = groupMembers.values,
+                    requesterUid = user.uid
+                )
+                var updatedNotifications = state.notifications
+                recipientIds.forEach { recipientUid ->
+                    val currentNotifs = updatedNotifications[recipientUid].orEmpty()
+                    val notif = SpendlyNotification(
+                        id = newId("notif"),
+                        title = "Yêu cầu tham gia ${group.name}",
+                        body = "$displayName muốn tham gia quỹ bằng mã mời $normalizedCode. Nhấn để duyệt.",
+                        type = "JOIN_REQUEST",
+                        groupId = group.groupId,
+                        isRead = false,
+                        createdAtMillis = now
+                    )
+                    updatedNotifications = updatedNotifications + (recipientUid to (listOf(notif) + currentNotifs))
+                }
+
+                memoryDb.value = state.copy(
+                    joinRequests = state.joinRequests + (group.groupId to (groupRequests + (user.uid to newRequest))),
+                    activities = state.activities + (group.groupId to (listOf(activity) + currentActivities)),
+                    notifications = updatedNotifications
+                )
+                JoinRequestSubmissionResult.PendingApproval(
+                    request = newRequest,
+                    alreadyPending = false
+                )
+            }
+        } else {
+            val inviteSnap = db.collection(COLLECTION_INVITATIONS).document(normalizedCode).get().await()
+            if (!inviteSnap.exists()) {
+                throw NoSuchElementException("Mã mời $normalizedCode không tồn tại hoặc đã hết hạn")
+            }
+            val groupId = inviteSnap.getString("groupId").orEmpty()
+            val groupRef = db.collection(COLLECTION_GROUPS).document(groupId)
+            val groupSnap = groupRef.get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm tương ứng với mã mời")
+            }
+            val group = groupSnap.toSpendlyGroup()
+            if (group.status != STATUS_ACTIVE) {
+                throw IllegalStateException("Nhóm này không còn hoạt động")
+            }
+
+            val membersCol = groupCollection(db, groupId, SUBCOLLECTION_MEMBERS)
+            val existingMembersSnap = membersCol.get().await()
+            val existingMap = existingMembersSnap.documents.associate { it.id to it.toSpendlyGroupMember() }
+            val existingMember = existingMap[user.uid]
+            if (existingMember != null && existingMember.status == STATUS_ACTIVE) {
+                return@runCatchingSuspend JoinRequestSubmissionResult.AlreadyMember(group)
+            }
+
+            val groupReqRef = groupCollection(db, groupId, SUBCOLLECTION_JOIN_REQUESTS).document(user.uid)
+            val userReqRef = db.collection(COLLECTION_USERS)
+                .document(user.uid)
+                .collection(SUBCOLLECTION_JOIN_REQUESTS)
+                .document(groupId)
+            val existingReqSnap = groupReqRef.get().await()
+            if (existingReqSnap.exists()) {
+                val existingReq = existingReqSnap.toSpendlyJoinRequest(fallbackGroupId = groupId)
+                if (existingReq.status == JoinRequestStatus.PENDING) {
+                    return@runCatchingSuspend JoinRequestSubmissionResult.PendingApproval(
+                        request = existingReq,
+                        alreadyPending = true
+                    )
+                }
+            }
+
+            val newRequest = SpendlyJoinRequest(
+                requestId = user.uid,
+                groupId = groupId,
+                groupName = group.name,
+                inviteCode = normalizedCode,
+                userId = user.uid,
+                displayName = displayName,
+                email = user.email.trim(),
+                phone = user.phone.trim(),
+                initials = computeInitials(displayName),
+                status = JoinRequestStatus.PENDING,
+                createdAtMillis = now
+            )
+
+            val activityId = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document().id
+            val activity = GroupActivity(
+                activityId = activityId,
+                groupId = groupId,
+                actorId = user.uid,
+                actorName = displayName,
+                action = ACTION_REQUEST_JOIN_GROUP,
+                targetId = user.uid,
+                description = "$displayName đã gửi yêu cầu tham gia quỹ qua mã mời $normalizedCode",
+                createdAtMillis = now
+            )
+
+            val recipientIds = buildJoinRequestManagerRecipients(
+                group = group,
+                members = existingMap.values,
+                requesterUid = user.uid
+            )
+
+            val batch = db.batch()
+            val requestMap = newRequest.toFirestoreMap()
+            batch.set(groupReqRef, requestMap)
+            batch.set(userReqRef, requestMap)
+            batch.set(
+                groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document(activityId),
+                activity.toFirestoreMap()
+            )
+            recipientIds.forEach { recipientUid ->
+                val notifRef = db.collection(COLLECTION_USERS)
+                    .document(recipientUid)
+                    .collection(SUBCOLLECTION_NOTIFICATIONS)
+                    .document()
+                val notif = SpendlyNotification(
+                    id = notifRef.id,
+                    title = "Yêu cầu tham gia ${group.name}",
+                    body = "$displayName muốn tham gia quỹ bằng mã mời $normalizedCode. Nhấn để duyệt.",
+                    type = "JOIN_REQUEST",
+                    groupId = groupId,
+                    isRead = false,
+                    createdAtMillis = now
+                )
+                batch.set(notifRef, notif.toFirestoreMap())
+            }
+            batch.commit().await()
+            JoinRequestSubmissionResult.PendingApproval(
+                request = newRequest,
+                alreadyPending = false
+            )
+        }
+    }
+
+    override suspend fun approveJoinRequest(
+        groupId: String,
+        requestUserId: String,
+        reviewer: SpendlyUser
+    ): Result<SpendlyGroupMember> = runCatchingSuspend {
+        require(groupId.isNotBlank() && requestUserId.isNotBlank() && reviewer.uid.isNotBlank()) {
+            "Thông tin duyệt yêu cầu không được để trống"
+        }
+
+        val now = clock()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val group = state.groups[groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm")
+                val groupMembers = state.members[groupId].orEmpty()
+                val reviewerMember = groupMembers[reviewer.uid]
+                val hasPermission = group.ownerId == reviewer.uid ||
+                    (reviewerMember?.status == STATUS_ACTIVE && reviewerMember.role.canManageGroup())
+                if (!hasPermission) {
+                    throw IllegalStateException("Chỉ Thủ quỹ hoặc Quản trị viên mới có quyền duyệt thành viên")
+                }
+
+                val groupRequests = state.joinRequests[groupId].orEmpty()
+                val existingRequest = groupRequests[requestUserId]
+                    ?.takeIf { it.status == JoinRequestStatus.PENDING }
+                    ?: throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+
+                val reviewerName = reviewer.fullName.trim()
+                    .ifBlank { reviewerMember?.displayName.orEmpty() }
+                    .ifBlank { "Thủ quỹ" }
+                val memberName = existingRequest.displayName.trim()
+                    .ifBlank { groupMembers[requestUserId]?.displayName.orEmpty() }
+                    .ifBlank { "Thành viên" }
+                val existingMember = groupMembers[requestUserId]
+                val joinedMember = (existingMember ?: SpendlyGroupMember(userId = requestUserId)).copy(
+                    displayName = memberName,
+                    initials = existingRequest.initials.ifBlank { computeInitials(memberName) },
+                    phone = existingRequest.phone.ifBlank { existingMember?.phone.orEmpty() },
+                    role = existingMember?.role?.takeIf { it == GroupRole.OWNER } ?: GroupRole.MEMBER,
+                    joinedAtMillis = now,
+                    status = STATUS_ACTIVE,
+                    canAddExpense = existingMember?.role != GroupRole.VIEWER
+                )
+                val updatedMembers = groupMembers + (requestUserId to joinedMember)
+                val activeMemberIds = updatedMembers.values
+                    .filter { it.status == STATUS_ACTIVE }
+                    .map { it.userId }
+                    .distinct()
+                val updatedGroup = group.copy(
+                    memberIds = activeMemberIds,
+                    memberCount = activeMemberIds.size
+                )
+
+                val updatedRequest = existingRequest.copy(
+                    status = JoinRequestStatus.APPROVED,
+                    reviewedAtMillis = now,
+                    reviewedBy = reviewer.uid,
+                    reviewedByName = reviewerName
+                )
+
+                val groupBalances = state.balances[groupId].orEmpty()
+                val updatedBalances = if (groupBalances.containsKey(requestUserId)) {
+                    groupBalances
+                } else {
+                    groupBalances + (requestUserId to MemberBalance(
+                        userId = requestUserId,
+                        totalPaid = 0L,
+                        totalShare = 0L,
+                        netBalance = 0L,
+                        updatedAtMillis = now
+                    ))
+                }
+
+                val activity = GroupActivity(
+                    activityId = newId("act"),
+                    groupId = groupId,
+                    actorId = reviewer.uid,
+                    actorName = reviewerName,
+                    action = ACTION_APPROVE_JOIN_REQUEST,
+                    targetId = requestUserId,
+                    description = "$reviewerName đã duyệt $memberName vào quỹ",
+                    createdAtMillis = now
+                )
+                val currentActivities = state.activities[groupId].orEmpty()
+
+                val requesterNotifs = state.notifications[requestUserId].orEmpty()
+                val approvedNotif = SpendlyNotification(
+                    id = newId("notif"),
+                    title = "Đã được duyệt vào ${group.name}",
+                    body = "Thủ quỹ $reviewerName đã chấp nhận yêu cầu tham gia quỹ của bạn.",
+                    type = "JOIN_APPROVED",
+                    groupId = groupId,
+                    isRead = false,
+                    createdAtMillis = now
+                )
+
+                memoryDb.value = state.copy(
+                    groups = state.groups + (groupId to updatedGroup),
+                    members = state.members + (groupId to updatedMembers),
+                    balances = state.balances + (groupId to updatedBalances),
+                    joinRequests = state.joinRequests + (groupId to (groupRequests + (requestUserId to updatedRequest))),
+                    activities = state.activities + (groupId to (listOf(activity) + currentActivities)),
+                    notifications = state.notifications + (requestUserId to (listOf(approvedNotif) + requesterNotifs))
+                )
+                joinedMember
+            }
+        } else {
+            val groupRef = db.collection(COLLECTION_GROUPS).document(groupId)
+            val groupSnap = groupRef.get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm")
+            }
+            val group = groupSnap.toSpendlyGroup()
+
+            val membersCol = groupCollection(db, groupId, SUBCOLLECTION_MEMBERS)
+            val membersSnap = membersCol.get().await()
+            val membersMap = membersSnap.documents.associate { it.id to it.toSpendlyGroupMember() }
+            val reviewerMember = membersMap[reviewer.uid]
+            val hasPermission = group.ownerId == reviewer.uid ||
+                (reviewerMember?.status == STATUS_ACTIVE && reviewerMember.role.canManageGroup())
+            if (!hasPermission) {
+                throw IllegalStateException("Chỉ Thủ quỹ hoặc Quản trị viên mới có quyền duyệt thành viên")
+            }
+
+            val groupReqRef = groupCollection(db, groupId, SUBCOLLECTION_JOIN_REQUESTS).document(requestUserId)
+            val reqSnap = groupReqRef.get().await()
+            if (!reqSnap.exists()) {
+                throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+            }
+            val existingRequest = reqSnap.toSpendlyJoinRequest(fallbackGroupId = groupId)
+            if (existingRequest.status != JoinRequestStatus.PENDING) {
+                throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+            }
+
+            val reviewerName = reviewer.fullName.trim()
+                .ifBlank { reviewerMember?.displayName.orEmpty() }
+                .ifBlank { "Thủ quỹ" }
+            val memberName = existingRequest.displayName.trim()
+                .ifBlank { membersMap[requestUserId]?.displayName.orEmpty() }
+                .ifBlank { "Thành viên" }
+            val existingMember = membersMap[requestUserId]
+            val joinedMember = (existingMember ?: SpendlyGroupMember(userId = requestUserId)).copy(
+                displayName = memberName,
+                initials = existingRequest.initials.ifBlank { computeInitials(memberName) },
+                phone = existingRequest.phone.ifBlank { existingMember?.phone.orEmpty() },
+                role = existingMember?.role?.takeIf { it == GroupRole.OWNER } ?: GroupRole.MEMBER,
+                joinedAtMillis = now,
+                status = STATUS_ACTIVE,
+                canAddExpense = existingMember?.role != GroupRole.VIEWER
+            )
+            val activeIds = (membersMap + (requestUserId to joinedMember)).values
+                .filter { it.status == STATUS_ACTIVE }
+                .map { it.userId }
+                .distinct()
+
+            val updatedRequest = existingRequest.copy(
+                status = JoinRequestStatus.APPROVED,
+                reviewedAtMillis = now,
+                reviewedBy = reviewer.uid,
+                reviewedByName = reviewerName
+            )
+            val userReqRef = db.collection(COLLECTION_USERS)
+                .document(requestUserId)
+                .collection(SUBCOLLECTION_JOIN_REQUESTS)
+                .document(groupId)
+
+            val balanceRef = groupCollection(db, groupId, SUBCOLLECTION_BALANCES).document(requestUserId)
+            val balanceSnap = balanceRef.get().await()
+
+            val activityId = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document().id
+            val activity = GroupActivity(
+                activityId = activityId,
+                groupId = groupId,
+                actorId = reviewer.uid,
+                actorName = reviewerName,
+                action = ACTION_APPROVE_JOIN_REQUEST,
+                targetId = requestUserId,
+                description = "$reviewerName đã duyệt $memberName vào quỹ",
+                createdAtMillis = now
+            )
+
+            val notifRef = db.collection(COLLECTION_USERS)
+                .document(requestUserId)
+                .collection(SUBCOLLECTION_NOTIFICATIONS)
+                .document()
+            val approvedNotif = SpendlyNotification(
+                id = notifRef.id,
+                title = "Đã được duyệt vào ${group.name}",
+                body = "Thủ quỹ $reviewerName đã chấp nhận yêu cầu tham gia quỹ của bạn.",
+                type = "JOIN_APPROVED",
+                groupId = groupId,
+                isRead = false,
+                createdAtMillis = now
+            )
+
+            val batch = db.batch()
+            val updatedRequestMap = updatedRequest.toFirestoreMap()
+            batch.set(groupReqRef, updatedRequestMap)
+            batch.set(userReqRef, updatedRequestMap)
+            batch.set(membersCol.document(requestUserId), joinedMember.toFirestoreMap())
+            batch.update(
+                groupRef,
+                mapOf(
+                    "memberIds" to activeIds,
+                    "memberCount" to activeIds.size
+                )
+            )
+            if (!balanceSnap.exists()) {
+                batch.set(
+                    balanceRef,
+                    MemberBalance(
+                        userId = requestUserId,
+                        totalPaid = 0L,
+                        totalShare = 0L,
+                        netBalance = 0L,
+                        updatedAtMillis = now
+                    ).toFirestoreMap()
+                )
+            }
+            batch.set(
+                groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document(activityId),
+                activity.toFirestoreMap()
+            )
+            batch.set(notifRef, approvedNotif.toFirestoreMap())
+            batch.commit().await()
+            joinedMember
+        }
+    }
+
+    override suspend fun rejectJoinRequest(
+        groupId: String,
+        requestUserId: String,
+        reviewer: SpendlyUser
+    ): Result<Unit> = runCatchingSuspend {
+        require(groupId.isNotBlank() && requestUserId.isNotBlank() && reviewer.uid.isNotBlank()) {
+            "Thông tin từ chối yêu cầu không được để trống"
+        }
+
+        val now = clock()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val group = state.groups[groupId]
+                    ?: throw NoSuchElementException("Không tìm thấy nhóm")
+                val groupMembers = state.members[groupId].orEmpty()
+                val reviewerMember = groupMembers[reviewer.uid]
+                val hasPermission = group.ownerId == reviewer.uid ||
+                    (reviewerMember?.status == STATUS_ACTIVE && reviewerMember.role.canManageGroup())
+                if (!hasPermission) {
+                    throw IllegalStateException("Chỉ Thủ quỹ hoặc Quản trị viên mới có quyền từ chối yêu cầu")
+                }
+
+                val groupRequests = state.joinRequests[groupId].orEmpty()
+                val existingRequest = groupRequests[requestUserId]
+                    ?.takeIf { it.status == JoinRequestStatus.PENDING }
+                    ?: throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+
+                val reviewerName = reviewer.fullName.trim()
+                    .ifBlank { reviewerMember?.displayName.orEmpty() }
+                    .ifBlank { "Thủ quỹ" }
+                val updatedRequest = existingRequest.copy(
+                    status = JoinRequestStatus.REJECTED,
+                    reviewedAtMillis = now,
+                    reviewedBy = reviewer.uid,
+                    reviewedByName = reviewerName
+                )
+
+                val activity = GroupActivity(
+                    activityId = newId("act"),
+                    groupId = groupId,
+                    actorId = reviewer.uid,
+                    actorName = reviewerName,
+                    action = ACTION_REJECT_JOIN_REQUEST,
+                    targetId = requestUserId,
+                    description = "$reviewerName đã từ chối yêu cầu tham gia của ${existingRequest.displayName}",
+                    createdAtMillis = now
+                )
+                val currentActivities = state.activities[groupId].orEmpty()
+
+                val requesterNotifs = state.notifications[requestUserId].orEmpty()
+                val rejectedNotif = SpendlyNotification(
+                    id = newId("notif"),
+                    title = "Yêu cầu tham gia ${group.name} bị từ chối",
+                    body = "Thủ quỹ $reviewerName đã từ chối yêu cầu tham gia quỹ của bạn.",
+                    type = "JOIN_REJECTED",
+                    groupId = "",
+                    isRead = false,
+                    createdAtMillis = now
+                )
+
+                memoryDb.value = state.copy(
+                    joinRequests = state.joinRequests + (groupId to (groupRequests + (requestUserId to updatedRequest))),
+                    activities = state.activities + (groupId to (listOf(activity) + currentActivities)),
+                    notifications = state.notifications + (requestUserId to (listOf(rejectedNotif) + requesterNotifs))
+                )
+            }
+        } else {
+            val groupSnap = db.collection(COLLECTION_GROUPS).document(groupId).get().await()
+            if (!groupSnap.exists()) {
+                throw NoSuchElementException("Không tìm thấy nhóm")
+            }
+            val group = groupSnap.toSpendlyGroup()
+
+            val membersSnap = groupCollection(db, groupId, SUBCOLLECTION_MEMBERS).get().await()
+            val membersMap = membersSnap.documents.associate { it.id to it.toSpendlyGroupMember() }
+            val reviewerMember = membersMap[reviewer.uid]
+            val hasPermission = group.ownerId == reviewer.uid ||
+                (reviewerMember?.status == STATUS_ACTIVE && reviewerMember.role.canManageGroup())
+            if (!hasPermission) {
+                throw IllegalStateException("Chỉ Thủ quỹ hoặc Quản trị viên mới có quyền từ chối yêu cầu")
+            }
+
+            val groupReqRef = groupCollection(db, groupId, SUBCOLLECTION_JOIN_REQUESTS).document(requestUserId)
+            val reqSnap = groupReqRef.get().await()
+            if (!reqSnap.exists()) {
+                throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+            }
+            val existingRequest = reqSnap.toSpendlyJoinRequest(fallbackGroupId = groupId)
+            if (existingRequest.status != JoinRequestStatus.PENDING) {
+                throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+            }
+
+            val reviewerName = reviewer.fullName.trim()
+                .ifBlank { reviewerMember?.displayName.orEmpty() }
+                .ifBlank { "Thủ quỹ" }
+            val updatedRequest = existingRequest.copy(
+                status = JoinRequestStatus.REJECTED,
+                reviewedAtMillis = now,
+                reviewedBy = reviewer.uid,
+                reviewedByName = reviewerName
+            )
+            val userReqRef = db.collection(COLLECTION_USERS)
+                .document(requestUserId)
+                .collection(SUBCOLLECTION_JOIN_REQUESTS)
+                .document(groupId)
+
+            val activityId = groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document().id
+            val activity = GroupActivity(
+                activityId = activityId,
+                groupId = groupId,
+                actorId = reviewer.uid,
+                actorName = reviewerName,
+                action = ACTION_REJECT_JOIN_REQUEST,
+                targetId = requestUserId,
+                description = "$reviewerName đã từ chối yêu cầu tham gia của ${existingRequest.displayName}",
+                createdAtMillis = now
+            )
+
+            val notifRef = db.collection(COLLECTION_USERS)
+                .document(requestUserId)
+                .collection(SUBCOLLECTION_NOTIFICATIONS)
+                .document()
+            val rejectedNotif = SpendlyNotification(
+                id = notifRef.id,
+                title = "Yêu cầu tham gia ${group.name} bị từ chối",
+                body = "Thủ quỹ $reviewerName đã từ chối yêu cầu tham gia quỹ của bạn.",
+                type = "JOIN_REJECTED",
+                groupId = "",
+                isRead = false,
+                createdAtMillis = now
+            )
+
+            val batch = db.batch()
+            val updatedMap = updatedRequest.toFirestoreMap()
+            batch.set(groupReqRef, updatedMap)
+            batch.set(userReqRef, updatedMap)
+            batch.set(
+                groupCollection(db, groupId, SUBCOLLECTION_ACTIVITIES).document(activityId),
+                activity.toFirestoreMap()
+            )
+            batch.set(notifRef, rejectedNotif.toFirestoreMap())
+            batch.commit().await()
+        }
+    }
+
+    override suspend fun cancelJoinRequest(
+        groupId: String,
+        userId: String
+    ): Result<Unit> = runCatchingSuspend {
+        require(groupId.isNotBlank() && userId.isNotBlank()) {
+            "Mã nhóm và UID người dùng không được để trống"
+        }
+
+        val now = clock()
+        val db = firestore
+
+        if (db == null) {
+            memoryMutex.withLock {
+                val state = memoryDb.value
+                val groupRequests = state.joinRequests[groupId].orEmpty()
+                val existingRequest = groupRequests[userId]
+                    ?.takeIf { it.status == JoinRequestStatus.PENDING }
+                    ?: throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+
+                val cancelled = existingRequest.copy(
+                    status = JoinRequestStatus.CANCELLED,
+                    reviewedAtMillis = now,
+                    reviewedBy = userId,
+                    reviewedByName = existingRequest.displayName
+                )
+                memoryDb.value = state.copy(
+                    joinRequests = state.joinRequests + (groupId to (groupRequests + (userId to cancelled)))
+                )
+            }
+        } else {
+            val groupReqRef = groupCollection(db, groupId, SUBCOLLECTION_JOIN_REQUESTS).document(userId)
+            val reqSnap = groupReqRef.get().await()
+            if (!reqSnap.exists()) {
+                throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+            }
+            val existingRequest = reqSnap.toSpendlyJoinRequest(fallbackGroupId = groupId)
+            if (existingRequest.status != JoinRequestStatus.PENDING) {
+                throw IllegalStateException("Yêu cầu tham gia không còn ở trạng thái chờ duyệt")
+            }
+
+            val cancelled = existingRequest.copy(
+                status = JoinRequestStatus.CANCELLED,
+                reviewedAtMillis = now,
+                reviewedBy = userId,
+                reviewedByName = existingRequest.displayName
+            )
+            val userReqRef = db.collection(COLLECTION_USERS)
+                .document(userId)
+                .collection(SUBCOLLECTION_JOIN_REQUESTS)
+                .document(groupId)
+
+            val batch = db.batch()
+            val cancelledMap = cancelled.toFirestoreMap()
+            batch.set(groupReqRef, cancelledMap)
+            batch.set(userReqRef, cancelledMap)
+            batch.commit().await()
+        }
+    }
+
+    private fun buildJoinRequestManagerRecipients(
+        group: SpendlyGroup,
+        members: Collection<SpendlyGroupMember>,
+        requesterUid: String
+    ): List<String> {
+        val recipients = linkedSetOf<String>()
+        if (group.ownerId.isNotBlank()) {
+            recipients.add(group.ownerId)
+        }
+        members
+            .filter { it.status == STATUS_ACTIVE && it.role.canManageGroup() && it.userId.isNotBlank() }
+            .forEach { recipients.add(it.userId) }
+        recipients.remove(requesterUid)
+        return recipients.toList()
     }
 
     override suspend fun addManualMember(
@@ -3359,6 +4087,43 @@ class FirestoreSpendlyRepository(
         createdAtMillis = longValue("createdAtMillis")
     )
 
+    private fun SpendlyJoinRequest.toFirestoreMap(): Map<String, Any?> = mapOf(
+        "requestId" to requestId,
+        "groupId" to groupId,
+        "groupName" to groupName,
+        "inviteCode" to inviteCode,
+        "userId" to userId,
+        "displayName" to displayName,
+        "email" to email,
+        "phone" to phone,
+        "initials" to initials,
+        "status" to status.name,
+        "createdAtMillis" to createdAtMillis,
+        "reviewedAtMillis" to reviewedAtMillis,
+        "reviewedBy" to reviewedBy,
+        "reviewedByName" to reviewedByName
+    )
+
+    private fun DocumentSnapshot.toSpendlyJoinRequest(fallbackGroupId: String): SpendlyJoinRequest {
+        val resolvedUserId = getString("userId").orEmpty().ifBlank { id }
+        return SpendlyJoinRequest(
+            requestId = getString("requestId").orEmpty().ifBlank { resolvedUserId },
+            groupId = getString("groupId").orEmpty().ifBlank { fallbackGroupId },
+            groupName = getString("groupName").orEmpty(),
+            inviteCode = getString("inviteCode").orEmpty(),
+            userId = resolvedUserId,
+            displayName = getString("displayName").orEmpty(),
+            email = getString("email").orEmpty(),
+            phone = getString("phone").orEmpty(),
+            initials = getString("initials").orEmpty(),
+            status = JoinRequestStatus.fromRaw(getString("status")),
+            createdAtMillis = longValue("createdAtMillis"),
+            reviewedAtMillis = (get("reviewedAtMillis") as? Number)?.toLong(),
+            reviewedBy = getString("reviewedBy"),
+            reviewedByName = getString("reviewedByName")
+        )
+    }
+
     private fun SpendlySettlement.toFirestoreMap(): Map<String, Any?> = mapOf(
         "settlementId" to settlementId,
         "groupId" to groupId,
@@ -3443,6 +4208,7 @@ class FirestoreSpendlyRepository(
 
         private const val SUBCOLLECTION_NOTIFICATIONS = "notifications"
         private const val SUBCOLLECTION_MEMBERS = "members"
+        private const val SUBCOLLECTION_JOIN_REQUESTS = "join_requests"
         private const val SUBCOLLECTION_EXPENSES = "expenses"
         private const val SUBCOLLECTION_PARTICIPANTS = "participants"
         private const val SUBCOLLECTION_INCOMES = "incomes"
@@ -3460,6 +4226,9 @@ class FirestoreSpendlyRepository(
 
         const val ACTION_CREATE_GROUP = "CREATE_GROUP"
         const val ACTION_JOIN_GROUP = "JOIN_GROUP"
+        const val ACTION_REQUEST_JOIN_GROUP = "REQUEST_JOIN_GROUP"
+        const val ACTION_APPROVE_JOIN_REQUEST = "APPROVE_JOIN_REQUEST"
+        const val ACTION_REJECT_JOIN_REQUEST = "REJECT_JOIN_REQUEST"
         const val ACTION_ADD_MEMBER = "ADD_MEMBER"
         const val ACTION_UPDATE_MEMBER_ROLE = "UPDATE_MEMBER_ROLE"
         const val ACTION_REMOVE_MEMBER = "REMOVE_MEMBER"

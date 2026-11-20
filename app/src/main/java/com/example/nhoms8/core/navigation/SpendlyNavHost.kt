@@ -69,11 +69,13 @@ import com.example.nhoms8.feature.chatbot.FinSproutChatPopup
 import com.example.nhoms8.feature.chatbot.FinSproutFloatingBubble
 import com.example.nhoms8.feature.groups.CreateGroupScreen
 import com.example.nhoms8.feature.groups.GroupDetailScreen
+import com.example.nhoms8.feature.groups.GroupDetailTab
 import com.example.nhoms8.feature.groups.GroupDetailUiState
 import com.example.nhoms8.feature.groups.GroupListScreen
 import com.example.nhoms8.feature.groups.GroupListUiState
 import com.example.nhoms8.feature.groups.GroupViewModel
 import com.example.nhoms8.feature.groups.JoinGroupScreen
+import com.example.nhoms8.feature.groups.qr.QrScannerScreen
 import com.example.nhoms8.feature.notifications.NotificationsScreen
 import com.example.nhoms8.feature.settlements.SettlementV2Screen
 import com.example.nhoms8.feature.settlements.SettlementViewModel
@@ -780,6 +782,22 @@ fun SpendlyNavHost(
                                 groupViewModel.clearMessages()
                                 navController.navigate(SpendlyRoutes.JOIN_GROUP)
                             }
+                        },
+                        onScanQrClick = {
+                            if (currentUser.uid.isBlank()) {
+                                Toast.makeText(
+                                    context,
+                                    "Vui lòng đăng nhập để quét mã QR tham gia quỹ",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                navController.navigate(SpendlyRoutes.LOGIN)
+                            } else {
+                                groupViewModel.clearMessages()
+                                navController.navigate(SpendlyRoutes.JOIN_GROUP)
+                                navController.navigate(SpendlyRoutes.QR_SCANNER) {
+                                    launchSingleTop = true
+                                }
+                            }
                         }
                     )
                 }
@@ -789,6 +807,14 @@ fun SpendlyNavHost(
                         viewModel = groupViewModel,
                         onNavigateToGroup = { groupId ->
                             navController.navigate(SpendlyRoutes.groupDetail(groupId))
+                        },
+                        onNavigateToGroupMembers = { groupId ->
+                            navController.navigate(
+                                SpendlyRoutes.groupDetail(
+                                    groupId = groupId,
+                                    initialTab = GroupDetailTab.MEMBERS.name
+                                )
+                            )
                         }
                     )
                 }
@@ -810,11 +836,35 @@ fun SpendlyNavHost(
                     )
                 }
 
-                composable(SpendlyRoutes.JOIN_GROUP) {
+                composable(SpendlyRoutes.JOIN_GROUP) { backStackEntry ->
+                    var scannedInviteCode by rememberSaveable { mutableStateOf("") }
+                    var scannedCodeNonce by rememberSaveable { mutableStateOf(0L) }
+                    val pendingScannedCode by backStackEntry.savedStateHandle
+                        .getStateFlow<String?>(SpendlyRoutes.RESULT_SCANNED_INVITE_CODE, null)
+                        .collectAsStateWithLifecycle()
+
+                    LaunchedEffect(pendingScannedCode) {
+                        val incoming = pendingScannedCode?.trim()?.uppercase().orEmpty()
+                        if (incoming.isNotBlank()) {
+                            scannedInviteCode = incoming
+                            scannedCodeNonce += 1L
+                            backStackEntry.savedStateHandle.remove<String>(
+                                SpendlyRoutes.RESULT_SCANNED_INVITE_CODE
+                            )
+                        }
+                    }
+
                     JoinGroupScreen(
                         viewModel = groupViewModel,
+                        initialInviteCode = scannedInviteCode,
+                        scannedCodeNonce = scannedCodeNonce,
                         onBackClick = {
                             navController.popBackStack()
+                        },
+                        onScanQrClick = {
+                            navController.navigate(SpendlyRoutes.QR_SCANNER) {
+                                launchSingleTop = true
+                            }
                         },
                         onJoinedGroup = { group ->
                             activateGroupEverywhere(group.groupId, groupViewModel, spendTogetherViewModel)
@@ -825,13 +875,39 @@ fun SpendlyNavHost(
                     )
                 }
 
+                composable(SpendlyRoutes.QR_SCANNER) {
+                    QrScannerScreen(
+                        onBackClick = {
+                            navController.popBackStack()
+                        },
+                        onInviteCodeScanned = { code ->
+                            navController.previousBackStackEntry
+                                ?.savedStateHandle
+                                ?.set(SpendlyRoutes.RESULT_SCANNED_INVITE_CODE, code)
+                            navController.popBackStack()
+                        },
+                        onManualInputClick = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
+
                 composable(
                     route = SpendlyRoutes.GROUP_DETAIL,
                     arguments = listOf(
-                        navArgument(SpendlyRoutes.ARG_GROUP_ID) { type = NavType.StringType }
+                        navArgument(SpendlyRoutes.ARG_GROUP_ID) { type = NavType.StringType },
+                        navArgument(SpendlyRoutes.ARG_INITIAL_TAB) {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        }
                     )
                 ) { backStackEntry ->
                     val groupId = backStackEntry.arguments?.getString(SpendlyRoutes.ARG_GROUP_ID).orEmpty()
+                    val rawTab = backStackEntry.arguments?.getString(SpendlyRoutes.ARG_INITIAL_TAB)
+                    val resolvedInitialTab = GroupDetailTab.entries.firstOrNull {
+                        it.name.equals(rawTab, ignoreCase = true)
+                    } ?: GroupDetailTab.OVERVIEW
                     LaunchedEffect(groupId) {
                         if (groupId.isNotBlank()) {
                             activateGroupEverywhere(groupId, groupViewModel, spendTogetherViewModel)
@@ -841,6 +917,7 @@ fun SpendlyNavHost(
                     GroupDetailScreen(
                         groupId = groupId,
                         viewModel = groupViewModel,
+                        initialTab = resolvedInitialTab,
                         onBackClick = {
                             navController.popBackStack()
                         },
@@ -1368,7 +1445,9 @@ fun SpendlyNavHost(
             )
         }
 
-        val showChatbotEntry = selectedTopLevelTab != null || currentRoute == SpendlyRoutes.GROUP_DETAIL
+        val showChatbotEntry = selectedTopLevelTab != null ||
+            currentRoute == SpendlyRoutes.GROUP_DETAIL ||
+            currentRoute?.startsWith("group_detail/") == true
         if (showChatbotEntry && !showAddSheet && !isChatPopupOpen) {
             FinSproutFloatingBubble(
                 onClick = { isChatPopupOpen = true },

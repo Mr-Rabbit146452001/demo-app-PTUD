@@ -10,6 +10,7 @@ object SpendlyRoutes {
     const val ARG_EMAIL_OR_PHONE = "emailOrPhone"
     const val ARG_GROUP_ID = "groupId"
     const val ARG_EXPENSE_ID = "expenseId"
+    const val ARG_INITIAL_TAB = "tab"
 
     // Onboarding & Auth routes
     const val WELCOME = "welcome"
@@ -30,7 +31,9 @@ object SpendlyRoutes {
     // Multi-group routes
     const val CREATE_GROUP = "create_group"
     const val JOIN_GROUP = "join_group"
-    const val GROUP_DETAIL = "group_detail/{$ARG_GROUP_ID}"
+    const val QR_SCANNER = "join_group_qr_scanner"
+    const val GROUP_DETAIL = "group_detail/{$ARG_GROUP_ID}?$ARG_INITIAL_TAB={$ARG_INITIAL_TAB}"
+    const val RESULT_SCANNED_INVITE_CODE = "scanned_invite_code"
 
     // Transaction & Split V2 routes
     const val ADD_EDIT_EXPENSE = "add_edit_expense"
@@ -63,7 +66,11 @@ object SpendlyRoutes {
         }
     }
 
-    fun groupDetail(groupId: String): String = "group_detail/${Uri.encode(groupId)}"
+    fun groupDetail(groupId: String, initialTab: String? = null): String {
+        val base = "group_detail/${Uri.encode(groupId)}"
+        val tab = initialTab?.trim().orEmpty()
+        return if (tab.isEmpty()) base else "$base?$ARG_INITIAL_TAB=${Uri.encode(tab)}"
+    }
 
     fun addIncome(groupId: String): String = "add_income/${Uri.encode(groupId)}"
 

@@ -22,18 +22,24 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.Login
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.GroupAdd
+import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.QrCode2
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,7 +56,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.nhoms8.core.designsystem.GlassCard
 import com.example.nhoms8.core.designsystem.OrganicBackground
 import com.example.nhoms8.core.designsystem.SpendlyButton
+import com.example.nhoms8.core.designsystem.SpendlyButtonStyle
 import com.example.nhoms8.domain.model.SpendlyGroup
+import com.example.nhoms8.domain.model.SpendlyJoinRequest
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
 import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
@@ -63,40 +71,66 @@ import dev.chrisbanes.haze.rememberHazeState
 fun JoinGroupScreen(
     viewModel: GroupViewModel,
     initialInviteCode: String = "",
+    scannedCodeNonce: Long = 0L,
     onBackClick: () -> Unit,
+    onScanQrClick: () -> Unit = {},
     onJoinedGroup: (SpendlyGroup) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.groupsUiState.collectAsStateWithLifecycle()
+    var pendingApprovalState by remember { mutableStateOf<Pair<SpendlyJoinRequest, Boolean>?>(null) }
 
     JoinGroupContent(
         initialInviteCode = initialInviteCode,
+        scannedCodeNonce = scannedCodeNonce,
         isSubmitting = uiState.isSubmitting,
         serverErrorMessage = uiState.errorMessage,
+        pendingRequest = pendingApprovalState?.first,
+        isDuplicatePending = pendingApprovalState?.second == true,
         onBackClick = {
             viewModel.clearMessages()
             onBackClick()
         },
+        onScanQrClick = {
+            viewModel.clearMessages()
+            pendingApprovalState = null
+            onScanQrClick()
+        },
         onJoinSubmit = { code ->
-            viewModel.joinGroup(
+            pendingApprovalState = null
+            viewModel.requestJoinGroup(
                 inviteCode = code,
-                onSuccess = onJoinedGroup
+                onPendingApproval = { request, alreadyPending ->
+                    pendingApprovalState = request to alreadyPending
+                },
+                onAlreadyMember = onJoinedGroup
             )
+        },
+        onClearPendingNotice = { pendingApprovalState = null },
+        onReturnAfterRequestClick = {
+            viewModel.clearMessages()
+            onBackClick()
         },
         modifier = modifier
     )
 }
 
 /**
- * Giao diện thuần trạng thái cho màn hình Tham gia quỹ nhóm.
+ * Giao diện thuần trạng thái cho màn hình Gửi yêu cầu tham gia quỹ nhóm.
  */
 @Composable
 fun JoinGroupContent(
     initialInviteCode: String = "",
+    scannedCodeNonce: Long = 0L,
     isSubmitting: Boolean = false,
     serverErrorMessage: String? = null,
+    pendingRequest: SpendlyJoinRequest? = null,
+    isDuplicatePending: Boolean = false,
     onBackClick: () -> Unit = {},
+    onScanQrClick: () -> Unit = {},
     onJoinSubmit: (inviteCode: String) -> Unit = {},
+    onClearPendingNotice: () -> Unit = {},
+    onReturnAfterRequestClick: () -> Unit = onBackClick,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.spendlyColors
@@ -108,6 +142,20 @@ fun JoinGroupContent(
         )
     }
     var localError by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastAppliedQrNonce by rememberSaveable { mutableStateOf(0L) }
+    var showQrPrefillNotice by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(initialInviteCode, scannedCodeNonce) {
+        if (scannedCodeNonce > 0L && scannedCodeNonce != lastAppliedQrNonce) {
+            val normalized = initialInviteCode.uppercase().filter { it.isLetterOrDigit() }.take(6)
+            if (normalized.isNotEmpty()) {
+                inviteCode = normalized
+                localError = null
+                lastAppliedQrNonce = scannedCodeNonce
+                showQrPrefillNotice = true
+            }
+        }
+    }
 
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.primaryLavender,
@@ -164,7 +212,7 @@ fun JoinGroupContent(
                         color = colors.textPrimary
                     )
                     Text(
-                        text = "Kết nối vào quỹ chi tiêu chung bằng mã mời",
+                        text = "Gửi yêu cầu tham gia quỹ bằng mã mời · Thủ quỹ sẽ duyệt",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textMuted
                     )
@@ -216,6 +264,8 @@ fun JoinGroupContent(
                                 .filter { it.isLetterOrDigit() }
                                 .take(6)
                             localError = null
+                            showQrPrefillNotice = false
+                            onClearPendingNotice()
                         },
                         label = { Text("Mã mời quỹ") },
                         placeholder = { Text("VD: SP8K2M") },
@@ -225,6 +275,18 @@ fun JoinGroupContent(
                                 contentDescription = null,
                                 tint = colors.deepLavender
                             )
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = onScanQrClick,
+                                enabled = !isSubmitting
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.QrCodeScanner,
+                                    contentDescription = "Quét mã QR",
+                                    tint = colors.deepLavender
+                                )
+                            }
                         },
                         supportingText = {
                             Row(
@@ -272,10 +334,82 @@ fun JoinGroupContent(
                                 color = colors.coralDeep
                             )
                         }
+                    } else if (showQrPrefillNotice && inviteCode.length == 6 && pendingRequest == null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(SpendlyShapeTokens.CardSmall)
+                                .background(colors.mintContainer)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = colors.mintDeep,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Đã nhận mã từ QR — kiểm tra và bấm Gửi yêu cầu tham gia",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                color = colors.mintDeep,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+
+                    if (pendingRequest != null) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(SpendlyShapeTokens.CardSmall)
+                                .background(colors.lavenderContainer)
+                                .border(
+                                    width = 1.dp,
+                                    color = colors.primaryLavender.copy(alpha = 0.45f),
+                                    shape = SpendlyShapeTokens.CardSmall
+                                )
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.HourglassTop,
+                                    contentDescription = null,
+                                    tint = colors.deepLavender,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = if (isDuplicatePending) {
+                                        "Bạn đã gửi yêu cầu trước đó"
+                                    } else {
+                                        "Đã gửi yêu cầu tham gia quỹ"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = colors.deepLavender
+                                )
+                            }
+                            Text(
+                                text = "Quỹ \"${pendingRequest.groupName}\" (Mã ${pendingRequest.inviteCode}) — Đang chờ Thủ quỹ hoặc Quản trị viên phê duyệt để bạn chính thức vào quỹ.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textPrimary
+                            )
+                            SpendlyButton(
+                                text = "Về danh sách quỹ",
+                                onClick = onReturnAfterRequestClick,
+                                modifier = Modifier.fillMaxWidth(),
+                                height = 44.dp,
+                                style = SpendlyButtonStyle.PRIMARY
+                            )
+                        }
                     }
 
                     SpendlyButton(
-                        text = "Tham gia quỹ",
+                        text = "Gửi yêu cầu tham gia",
                         onClick = {
                             val normalized = inviteCode.trim().uppercase()
                             if (normalized.length != 6) {
@@ -288,7 +422,17 @@ fun JoinGroupContent(
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isSubmitting,
                         isLoading = isSubmitting,
-                        leadingIcon = Icons.AutoMirrored.Rounded.Login
+                        leadingIcon = Icons.AutoMirrored.Rounded.Send
+                    )
+
+                    SpendlyButton(
+                        text = "Quét mã QR",
+                        onClick = onScanQrClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isSubmitting,
+                        style = SpendlyButtonStyle.SECONDARY_GLASS,
+                        leadingIcon = Icons.Rounded.QrCodeScanner,
+                        hazeState = hazeState
                     )
                 }
             }
@@ -333,7 +477,7 @@ fun JoinGroupContent(
                     )
                     InviteHintRow(
                         step = "3",
-                        text = "Sau khi tham gia thành công, bạn có thể theo dõi số dư, ghi khoản chi và đối soát nợ theo thời gian thực."
+                        text = "Sau khi Thủ quỹ duyệt yêu cầu, bạn sẽ chính thức vào quỹ để theo dõi số dư, ghi khoản chi và đối soát nợ."
                     )
                 }
             }

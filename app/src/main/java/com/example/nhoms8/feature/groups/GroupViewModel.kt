@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.nhoms8.data.firestore.FirestoreSpendlyRepository
 import com.example.nhoms8.domain.model.GroupActivity
 import com.example.nhoms8.domain.model.GroupRole
+import com.example.nhoms8.domain.model.JoinRequestSubmissionResult
 import com.example.nhoms8.domain.model.MemberBalance
 import com.example.nhoms8.domain.model.RecordStatus
 import com.example.nhoms8.domain.model.SpendlyCategory
@@ -13,6 +14,7 @@ import com.example.nhoms8.domain.model.SpendlyExpense
 import com.example.nhoms8.domain.model.SpendlyGroup
 import com.example.nhoms8.domain.model.SpendlyGroupMember
 import com.example.nhoms8.domain.model.SpendlyIncome
+import com.example.nhoms8.domain.model.SpendlyJoinRequest
 import com.example.nhoms8.domain.model.SpendlyNotification
 import com.example.nhoms8.domain.model.SpendlyUser
 import com.example.nhoms8.domain.repository.GroupRepository
@@ -60,7 +62,9 @@ data class GroupListUiState(
     val isLoading: Boolean = true,
     val isSubmitting: Boolean = false,
     val errorMessage: String? = null,
-    val successMessage: String? = null
+    val successMessage: String? = null,
+    val myPendingJoinRequests: List<SpendlyJoinRequest> = emptyList(),
+    val pendingApprovalsCountByGroup: Map<String, Int> = emptyMap()
 ) {
     val filteredGroups: List<SpendlyGroup>
         get() = if (searchQuery.isBlank()) {
@@ -108,7 +112,8 @@ data class GroupDetailUiState(
     val isLoading: Boolean = true,
     val isProcessing: Boolean = false,
     val errorMessage: String? = null,
-    val successMessage: String? = null
+    val successMessage: String? = null,
+    val pendingJoinRequests: List<SpendlyJoinRequest> = emptyList()
 )
 
 /**
@@ -128,7 +133,8 @@ private data class OperationStatus(
 private data class GroupCoreSnapshot(
     val group: SpendlyGroup?,
     val members: List<SpendlyGroupMember>,
-    val activities: List<GroupActivity>
+    val activities: List<GroupActivity>,
+    val pendingJoinRequests: List<SpendlyJoinRequest>
 )
 
 private data class GroupLedgerSnapshot(
@@ -233,10 +239,75 @@ class GroupViewModel @JvmOverloads constructor(
         )
     }
 
+    val myPendingJoinRequests: StateFlow<List<SpendlyJoinRequest>> = _currentUser
+        .map { it.uid }
+        .distinctUntilChanged()
+        .flatMapLatest { uid ->
+            if (uid.isBlank()) {
+                flowOf(emptyList())
+            } else {
+                groupRepository.observeUserJoinRequests(uid).catch { emit(emptyList()) }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000L),
+            initialValue = emptyList()
+        )
+
+    val incomingJoinRequestsForManager: StateFlow<List<SpendlyJoinRequest>> = _currentUser
+        .map { it.uid }
+        .distinctUntilChanged()
+        .flatMapLatest { uid ->
+            if (uid.isBlank()) {
+                flowOf(emptyList())
+            } else {
+                groupRepository.observeUserGroups(uid)
+                    .catch { emit(emptyList()) }
+                    .flatMapLatest { groups ->
+                        if (groups.isEmpty()) {
+                            flowOf(emptyList())
+                        } else {
+                            val perGroupFlows = groups.map { group ->
+                                combine(
+                                    groupRepository.observeGroupMembers(group.groupId)
+                                        .catch { emit(emptyList()) },
+                                    groupRepository.observeGroupJoinRequests(group.groupId)
+                                        .catch { emit(emptyList()) }
+                                ) { members, requests ->
+                                    val canManage = group.ownerId == uid ||
+                                        members.any { it.userId == uid && it.role.canManageGroup() }
+                                    if (canManage) requests else emptyList()
+                                }
+                            }
+                            combine(perGroupFlows) { chunks ->
+                                chunks.asSequence()
+                                    .flatMap { it.asSequence() }
+                                    .sortedByDescending { it.createdAtMillis }
+                                    .toList()
+                            }
+                        }
+                    }
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000L),
+            initialValue = emptyList()
+        )
+
+    private val joinRequestsOverviewFlow = combine(
+        myPendingJoinRequests,
+        incomingJoinRequestsForManager
+    ) { myPending, incoming ->
+        myPending to incoming.groupingBy { it.groupId }.eachCount()
+    }
+
     val groupsUiState: StateFlow<GroupListUiState> = combine(
         groupsWithStatsFlow,
-        listMetaFlow
-    ) { (groups, statsMap), meta ->
+        listMetaFlow,
+        joinRequestsOverviewFlow
+    ) { (groups, statsMap), meta, (myPendingRequests, pendingApprovalsByGroup) ->
         GroupListUiState(
             groups = groups,
             groupStats = statsMap,
@@ -245,7 +316,9 @@ class GroupViewModel @JvmOverloads constructor(
             isLoading = !meta.hasLoadedGroups || (meta.isBootstrapping && groups.isEmpty()),
             isSubmitting = meta.operationStatus.isSubmitting,
             errorMessage = meta.operationStatus.errorMessage,
-            successMessage = meta.operationStatus.successMessage
+            successMessage = meta.operationStatus.successMessage,
+            myPendingJoinRequests = myPendingRequests,
+            pendingApprovalsCountByGroup = pendingApprovalsByGroup
         )
     }.stateIn(
         scope = viewModelScope,
@@ -397,9 +470,15 @@ class GroupViewModel @JvmOverloads constructor(
             val coreFlow = combine(
                 groupRepository.observeGroup(groupId).catch { emit(null) },
                 groupRepository.observeGroupMembers(groupId).catch { emit(emptyList()) },
-                groupRepository.observeGroupActivities(groupId).catch { emit(emptyList()) }
-            ) { group, members, activities ->
-                GroupCoreSnapshot(group = group, members = members, activities = activities)
+                groupRepository.observeGroupActivities(groupId).catch { emit(emptyList()) },
+                groupRepository.observeGroupJoinRequests(groupId).catch { emit(emptyList()) }
+            ) { group, members, activities, pendingJoinRequests ->
+                GroupCoreSnapshot(
+                    group = group,
+                    members = members,
+                    activities = activities,
+                    pendingJoinRequests = pendingJoinRequests
+                )
             }
 
             val ledgerFlow = combine(
@@ -507,6 +586,125 @@ class GroupViewModel @JvmOverloads constructor(
                 _operationStatus.value = OperationStatus(
                     isSubmitting = false,
                     errorMessage = error.message ?: "Không thể tham gia quỹ bằng mã mời"
+                )
+            }
+        }
+    }
+
+    fun requestJoinGroup(
+        inviteCode: String,
+        onPendingApproval: (SpendlyJoinRequest, Boolean) -> Unit = { _, _ -> },
+        onAlreadyMember: (SpendlyGroup) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _operationStatus.value = OperationStatus(isSubmitting = true)
+            groupRepository.requestJoinGroupByInviteCode(
+                user = _currentUser.value,
+                inviteCode = inviteCode
+            ).onSuccess { result ->
+                when (result) {
+                    is JoinRequestSubmissionResult.AlreadyMember -> {
+                        _activeGroupId.value = result.group.groupId
+                        _operationStatus.value = OperationStatus(
+                            isSubmitting = false,
+                            successMessage = "Bạn đã là thành viên của quỹ \"${result.group.name}\""
+                        )
+                        onAlreadyMember(result.group)
+                    }
+
+                    is JoinRequestSubmissionResult.PendingApproval -> {
+                        val message = if (result.alreadyPending) {
+                            "Yêu cầu tham gia quỹ \"${result.request.groupName}\" đã được gửi trước đó và đang chờ Thủ quỹ duyệt"
+                        } else {
+                            "Đã gửi yêu cầu tham gia quỹ \"${result.request.groupName}\" — Đang chờ Thủ quỹ duyệt"
+                        }
+                        _operationStatus.value = OperationStatus(
+                            isSubmitting = false,
+                            successMessage = message
+                        )
+                        onPendingApproval(result.request, result.alreadyPending)
+                    }
+                }
+            }.onFailure { error ->
+                _operationStatus.value = OperationStatus(
+                    isSubmitting = false,
+                    errorMessage = error.message ?: "Không thể gửi yêu cầu tham gia quỹ"
+                )
+            }
+        }
+    }
+
+    fun approveJoinRequest(
+        groupId: String,
+        requestUserId: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _operationStatus.value = OperationStatus(isSubmitting = true)
+            groupRepository.approveJoinRequest(
+                groupId = groupId,
+                requestUserId = requestUserId,
+                reviewer = _currentUser.value
+            ).onSuccess { member ->
+                _operationStatus.value = OperationStatus(
+                    isSubmitting = false,
+                    successMessage = "Đã duyệt ${member.displayName} vào quỹ"
+                )
+                onSuccess()
+            }.onFailure { error ->
+                _operationStatus.value = OperationStatus(
+                    isSubmitting = false,
+                    errorMessage = error.message ?: "Không thể duyệt yêu cầu tham gia"
+                )
+            }
+        }
+    }
+
+    fun rejectJoinRequest(
+        groupId: String,
+        requestUserId: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _operationStatus.value = OperationStatus(isSubmitting = true)
+            groupRepository.rejectJoinRequest(
+                groupId = groupId,
+                requestUserId = requestUserId,
+                reviewer = _currentUser.value
+            ).onSuccess {
+                _operationStatus.value = OperationStatus(
+                    isSubmitting = false,
+                    successMessage = "Đã từ chối yêu cầu tham gia quỹ"
+                )
+                onSuccess()
+            }.onFailure { error ->
+                _operationStatus.value = OperationStatus(
+                    isSubmitting = false,
+                    errorMessage = error.message ?: "Không thể từ chối yêu cầu tham gia"
+                )
+            }
+        }
+    }
+
+    fun cancelJoinRequest(
+        groupId: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _operationStatus.value = OperationStatus(isSubmitting = true)
+            groupRepository.cancelJoinRequest(
+                groupId = groupId,
+                userId = _currentUser.value.uid
+            ).onSuccess {
+                _operationStatus.value = OperationStatus(
+                    isSubmitting = false,
+                    successMessage = "Đã hủy yêu cầu tham gia quỹ"
+                )
+                onSuccess()
+            }.onFailure { error ->
+                _operationStatus.value = OperationStatus(
+                    isSubmitting = false,
+                    errorMessage = error.message ?: "Không thể hủy yêu cầu tham gia"
                 )
             }
         }
@@ -744,7 +942,8 @@ class GroupViewModel @JvmOverloads constructor(
             isLoading = false,
             isProcessing = opStatus.isSubmitting,
             errorMessage = opStatus.errorMessage,
-            successMessage = opStatus.successMessage
+            successMessage = opStatus.successMessage,
+            pendingJoinRequests = core.pendingJoinRequests
         )
     }
 

@@ -19,12 +19,14 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,6 +52,7 @@ import com.example.nhoms8.core.designsystem.OrganicBackground
 import com.example.nhoms8.core.designsystem.SpendlyButton
 import com.example.nhoms8.core.designsystem.SpendlyButtonStyle
 import com.example.nhoms8.domain.model.SpendlyGroup
+import com.example.nhoms8.domain.model.SpendlyJoinRequest
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
 import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
@@ -65,6 +68,7 @@ fun GroupListScreen(
     onGroupClick: (String) -> Unit,
     onCreateGroupClick: () -> Unit,
     onJoinGroupClick: () -> Unit,
+    onScanQrClick: () -> Unit = onJoinGroupClick,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.groupsUiState.collectAsStateWithLifecycle()
@@ -78,7 +82,9 @@ fun GroupListScreen(
         },
         onCreateGroupClick = onCreateGroupClick,
         onJoinGroupClick = onJoinGroupClick,
+        onScanQrClick = onScanQrClick,
         onSetActiveGroup = viewModel::setActiveGroup,
+        onCancelJoinRequest = { groupId -> viewModel.cancelJoinRequest(groupId) },
         onDismissMessage = viewModel::clearMessages,
         modifier = modifier
     )
@@ -94,7 +100,9 @@ fun GroupListContent(
     onGroupClick: (String) -> Unit,
     onCreateGroupClick: () -> Unit,
     onJoinGroupClick: () -> Unit,
+    onScanQrClick: () -> Unit = {},
     onSetActiveGroup: (String) -> Unit = {},
+    onCancelJoinRequest: (String) -> Unit = {},
     onDismissMessage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -139,17 +147,39 @@ fun GroupListContent(
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(SpendlyShapeTokens.Pill)
-                            .background(colors.lavenderContainer)
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "${uiState.groups.size} quỹ",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.onLavenderContainer
-                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(SpendlyShapeTokens.Pill)
+                                .background(colors.lavenderContainer)
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "${uiState.groups.size} quỹ",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = colors.onLavenderContainer
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(colors.glassContainer.copy(alpha = 0.85f))
+                                .border(1.dp, colors.divider, CircleShape)
+                                .clickable(onClick = onScanQrClick),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.QrCodeScanner,
+                                contentDescription = "Quét mã QR tham gia quỹ",
+                                tint = colors.deepLavender,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -193,6 +223,29 @@ fun GroupListContent(
                         message = bannerText,
                         isError = isError,
                         onDismiss = onDismissMessage
+                    )
+                }
+            }
+
+            if (uiState.myPendingJoinRequests.isNotEmpty()) {
+                item(key = "pending_join_requests_header") {
+                    Text(
+                        text = "Yêu cầu chờ Thủ quỹ duyệt (${uiState.myPendingJoinRequests.size})",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.textPrimary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                items(
+                    items = uiState.myPendingJoinRequests,
+                    key = { "my_req_${it.groupId}" }
+                ) { request ->
+                    MyPendingJoinRequestCard(
+                        request = request,
+                        isSubmitting = uiState.isSubmitting,
+                        hazeState = hazeState,
+                        onCancelClick = { onCancelJoinRequest(request.groupId) }
                     )
                 }
             }
@@ -242,15 +295,18 @@ fun GroupListContent(
                     val stats = uiState.statsFor(group.groupId)
                     val isActive = group.groupId == uiState.activeGroupId
                     val memberTotal = group.memberCount.coerceAtLeast(group.memberIds.size).coerceAtLeast(1)
+                    val pendingApprovalsCount = uiState.pendingApprovalsCountByGroup[group.groupId] ?: 0
 
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (isActive) {
                             ActiveGroupBadgeRow(
-                                inviteCode = group.inviteCode
+                                inviteCode = group.inviteCode,
+                                pendingApprovalsCount = pendingApprovalsCount
                             )
                         } else {
                             InactiveGroupQuickSwitchRow(
                                 inviteCode = group.inviteCode,
+                                pendingApprovalsCount = pendingApprovalsCount,
                                 onSetActive = { onSetActiveGroup(group.groupId) }
                             )
                         }
@@ -355,7 +411,10 @@ private fun GroupSearchPill(
 }
 
 @Composable
-private fun ActiveGroupBadgeRow(inviteCode: String) {
+private fun ActiveGroupBadgeRow(
+    inviteCode: String,
+    pendingApprovalsCount: Int = 0
+) {
     val colors = MaterialTheme.spendlyColors
     Row(
         modifier = Modifier
@@ -365,24 +424,33 @@ private fun ActiveGroupBadgeRow(inviteCode: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
-            modifier = Modifier
-                .clip(SpendlyShapeTokens.Pill)
-                .background(colors.mintContainer)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(
-                imageVector = Icons.Rounded.CheckCircle,
-                contentDescription = null,
-                tint = colors.mintDeep,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(
-                text = "Đang hoạt động",
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.mintDeep
-            )
+            Row(
+                modifier = Modifier
+                    .clip(SpendlyShapeTokens.Pill)
+                    .background(colors.mintContainer)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = colors.mintDeep,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(
+                    text = "Đang hoạt động",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.mintDeep
+                )
+            }
+
+            if (pendingApprovalsCount > 0) {
+                PendingApprovalCountBadge(count = pendingApprovalsCount)
+            }
         }
 
         if (inviteCode.isNotBlank()) {
@@ -398,6 +466,7 @@ private fun ActiveGroupBadgeRow(inviteCode: String) {
 @Composable
 private fun InactiveGroupQuickSwitchRow(
     inviteCode: String,
+    pendingApprovalsCount: Int = 0,
     onSetActive: () -> Unit
 ) {
     val colors = MaterialTheme.spendlyColors
@@ -408,11 +477,19 @@ private fun InactiveGroupQuickSwitchRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = if (inviteCode.isNotBlank()) "Mã mời: $inviteCode" else "Quỹ nhóm",
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.textMuted
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = if (inviteCode.isNotBlank()) "Mã mời: $inviteCode" else "Quỹ nhóm",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textMuted
+            )
+            if (pendingApprovalsCount > 0) {
+                PendingApprovalCountBadge(count = pendingApprovalsCount)
+            }
+        }
 
         Text(
             text = "Đặt làm quỹ chính",
@@ -423,6 +500,86 @@ private fun InactiveGroupQuickSwitchRow(
                 .clickable(onClick = onSetActive)
                 .padding(horizontal = 8.dp, vertical = 2.dp)
         )
+    }
+}
+
+@Composable
+private fun PendingApprovalCountBadge(count: Int) {
+    val colors = MaterialTheme.spendlyColors
+    Box(
+        modifier = Modifier
+            .clip(SpendlyShapeTokens.Pill)
+            .background(colors.lavenderContainer)
+            .border(1.dp, colors.primaryLavender.copy(alpha = 0.45f), SpendlyShapeTokens.Pill)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = "$count chờ duyệt",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.deepLavender
+        )
+    }
+}
+
+@Composable
+private fun MyPendingJoinRequestCard(
+    request: SpendlyJoinRequest,
+    isSubmitting: Boolean,
+    hazeState: HazeState,
+    onCancelClick: () -> Unit
+) {
+    val colors = MaterialTheme.spendlyColors
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        hazeState = hazeState,
+        contentPadding = PaddingValues(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(SpendlyShapeTokens.CardSmall)
+                    .background(colors.lavenderContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.HourglassTop,
+                    contentDescription = null,
+                    tint = colors.deepLavender,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = request.groupName.ifBlank { "Quỹ nhóm" },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Mã mời: ${request.inviteCode} · Chờ Thủ quỹ duyệt",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textMuted
+                )
+            }
+
+            SpendlyButton(
+                text = "Hủy",
+                onClick = onCancelClick,
+                enabled = !isSubmitting,
+                height = 36.dp,
+                style = SpendlyButtonStyle.OUTLINED
+            )
+        }
     }
 }
 

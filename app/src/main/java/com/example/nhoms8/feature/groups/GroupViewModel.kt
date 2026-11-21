@@ -155,7 +155,7 @@ class GroupViewModel @JvmOverloads constructor(
     private val userRepository: UserRepository = DefaultSpendlyRepositoryHolder.instance,
     private val groupRepository: GroupRepository = DefaultSpendlyRepositoryHolder.instance,
     private val transactionRepository: TransactionRepository = DefaultSpendlyRepositoryHolder.instance,
-    autoBindDefaultUser: Boolean = true
+    autoBindDefaultUser: Boolean = false
 ) : ViewModel() {
 
     private val _currentUser = MutableStateFlow(
@@ -968,7 +968,7 @@ class GroupViewModel @JvmOverloads constructor(
             userRepository: UserRepository,
             groupRepository: GroupRepository,
             transactionRepository: TransactionRepository,
-            autoBindDefaultUser: Boolean = true
+            autoBindDefaultUser: Boolean = false
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {

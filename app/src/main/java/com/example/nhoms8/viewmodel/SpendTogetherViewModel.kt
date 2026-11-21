@@ -395,6 +395,7 @@ class SpendTogetherViewModel(
     fun syncFirebaseUser(uid: String, name: String, email: String) {
         if (uid.isBlank()) return
         _activeUserUid.value = uid
+        repository.login(phoneNumber = email, name = name)
         val repo = _spendlyRepo.value ?: return
         viewModelScope.launch {
             repo.ensureUserProfile(
@@ -498,6 +499,7 @@ class SpendTogetherViewModel(
         _firebaseUserEmail.value = null
         _activeUserUid.value = null
         _unreadNotificationsCount.value = 0
+        repository.resetProfile()
     }
 
     fun clearAuthError() {
@@ -506,7 +508,7 @@ class SpendTogetherViewModel(
 
     // ==================== HÀNH ĐỘNG TƯƠNG TÁC (USER INTENTS) ====================
 
-    fun onLogin(phoneNumber: String, name: String = "Lê Văn Hùng") {
+    fun onLogin(phoneNumber: String, name: String = "Thành viên Spendly") {
         repository.login(phoneNumber, name)
     }
 

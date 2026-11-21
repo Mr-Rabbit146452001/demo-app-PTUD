@@ -284,7 +284,9 @@ fun SpendlyNavHost(
                 composable(SpendlyRoutes.SPLASH) {
                     SplashVideoScreen(
                         onSplashFinished = {
-                            navController.navigate(SpendlyRoutes.HOME) {
+                            val isUserLoggedIn = SpendlyServiceLocator.authRepository.isUserLoggedIn()
+                            val nextDestination = if (isUserLoggedIn) SpendlyRoutes.HOME else SpendlyRoutes.WELCOME
+                            navController.navigate(nextDestination) {
                                 popUpTo(SpendlyRoutes.SPLASH) { inclusive = true }
                                 launchSingleTop = true
                             }
@@ -489,7 +491,7 @@ fun SpendlyNavHost(
 
                 composable(SpendlyRoutes.HOME) {
                     val hasLiveGroup = !activeGroupId.isNullOrBlank() && activeGroupDetail.group != null
-                    val displayUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name }
+                    val displayUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name }.ifBlank { "Thành viên" }
                     val displayUserInitials = computeInitials(displayUserName)
                     val displayGroupName = if (hasLiveGroup) {
                         activeGroupDetail.group?.name.orEmpty().ifBlank { spendTogetherUiState.activeGroupName }
@@ -640,7 +642,7 @@ fun SpendlyNavHost(
                 }
 
                 composable(SpendlyRoutes.PROFILE) {
-                    val displayUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name }
+                    val displayUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name }.ifBlank { "Thành viên" }
                     val displayInitials = computeInitials(displayUserName)
                     val contactInfo = currentUser.phone.ifBlank {
                         currentUser.email.ifBlank { spendTogetherUiState.userProfile.phoneNumber }
@@ -1143,7 +1145,7 @@ fun SpendlyNavHost(
                         }
                         SpendlyAnalyticsHelpers.filterLegacyHistoryGroups(
                             groups = spendTogetherUiState.historyGroups,
-                            currentUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name },
+                            currentUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name }.ifBlank { "Thành viên" },
                             searchQuery = historySearchQuery,
                             selectedScope = historySelectedScope,
                             selectedMemberName = selectedMemberName,

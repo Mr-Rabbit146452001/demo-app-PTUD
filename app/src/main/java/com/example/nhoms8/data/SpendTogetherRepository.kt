@@ -25,17 +25,9 @@ import kotlinx.coroutines.flow.update
  */
 class SpendTogetherRepository {
 
-    // 1. Hồ sơ người dùng đang đăng nhập (Trưởng nhóm: Lê Văn Hùng)
+    // 1. Hồ sơ người dùng đang đăng nhập
     private val _userProfile = MutableStateFlow(
-        UserProfile(
-            id = "1",
-            name = "Lê Văn Hùng",
-            initials = "VH",
-            phoneNumber = "0912 345 678",
-            groupName = "Quỹ Chi Tiêu Nhóm 08",
-            isLeader = true,
-            totalBalanceFormatted = "0 đ"
-        )
+        UserProfile()
     )
     val userProfile: StateFlow<UserProfile> = _userProfile.asStateFlow()
 
@@ -440,7 +432,7 @@ class SpendTogetherRepository {
         _filter.value = TransactionFilter()
     }
 
-    fun login(phoneNumber: String, name: String = "Lê Văn Hùng") {
+    fun login(phoneNumber: String, name: String = "Thành viên Spendly") {
         val initials = name.trim().split(" ")
             .mapNotNull { it.firstOrNull()?.toString() }
             .takeLast(2)
@@ -449,10 +441,15 @@ class SpendTogetherRepository {
 
         _userProfile.update {
             it.copy(
+                id = if (it.id.isBlank()) "user_${System.currentTimeMillis()}" else it.id,
                 phoneNumber = phoneNumber,
                 name = name,
-                initials = if (initials.isNotEmpty()) initials else "VH"
+                initials = if (initials.isNotEmpty()) initials else "SP"
             )
         }
+    }
+
+    fun resetProfile() {
+        _userProfile.value = UserProfile()
     }
 }

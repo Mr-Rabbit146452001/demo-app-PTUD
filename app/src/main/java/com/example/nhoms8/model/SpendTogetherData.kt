@@ -13,12 +13,12 @@ import com.example.nhoms8.algorithm.FintechAlgorithm
  * Thông tin tài khoản người dùng đang đăng nhập (Trưởng nhóm: Lê Văn Hùng)
  */
 data class UserProfile(
-    val id: String = "user_hung",
-    val name: String = "Lê Văn Hùng",
-    val initials: String = "VH",
-    val phoneNumber: String = "0912 345 678",
-    val groupName: String = "Quỹ Chi Tiêu Nhóm 08",
-    val isLeader: Boolean = true,
+    val id: String = "",
+    val name: String = "",
+    val initials: String = "",
+    val phoneNumber: String = "",
+    val groupName: String = "",
+    val isLeader: Boolean = false,
     val totalBalanceFormatted: String = "0 đ"
 )
 

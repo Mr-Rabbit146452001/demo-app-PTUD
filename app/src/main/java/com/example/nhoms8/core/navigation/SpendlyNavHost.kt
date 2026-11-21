@@ -51,6 +51,7 @@ import com.example.nhoms8.ProfileScreen
 import com.example.nhoms8.RecentTransaction
 import com.example.nhoms8.SettlementScreen
 import com.example.nhoms8.SignUpScreen
+import com.example.nhoms8.SplashVideoScreen
 import com.example.nhoms8.TransactionHistoryScreen
 import com.example.nhoms8.TransactionIconType
 import com.example.nhoms8.WelcomeScreen
@@ -143,7 +144,7 @@ fun SpendlyNavHost(
         )
     ),
     navController: NavHostController = rememberNavController(),
-    startDestination: String = SpendlyRoutes.HOME
+    startDestination: String = SpendlyRoutes.SPLASH
 ) {
     val context = LocalContext.current
     val spendTogetherUiState by spendTogetherViewModel.uiState.collectAsStateWithLifecycle()
@@ -279,6 +280,17 @@ fun SpendlyNavHost(
                 modifier = Modifier.fillMaxSize()
             ) {
                 // ==================== ONBOARDING & AUTH ====================
+
+                composable(SpendlyRoutes.SPLASH) {
+                    SplashVideoScreen(
+                        onSplashFinished = {
+                            navController.navigate(SpendlyRoutes.HOME) {
+                                popUpTo(SpendlyRoutes.SPLASH) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+                }
 
                 composable(SpendlyRoutes.WELCOME) {
                     Box(

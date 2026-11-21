@@ -13,6 +13,7 @@ object SpendlyRoutes {
     const val ARG_INITIAL_TAB = "tab"
 
     // Onboarding & Auth routes
+    const val SPLASH = "splash"
     const val WELCOME = "welcome"
     const val ONBOARDING_1 = "onboarding_1"
     const val ONBOARDING_2 = "onboarding_2"

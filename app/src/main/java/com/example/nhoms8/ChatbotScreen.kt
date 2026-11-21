@@ -83,6 +83,7 @@ import com.example.nhoms8.core.designsystem.GlassCard
 import com.example.nhoms8.core.designsystem.OrganicBackground
 import com.example.nhoms8.core.designsystem.SpendlyButton
 import com.example.nhoms8.core.designsystem.spendlyGlassSurface
+import com.example.nhoms8.feature.chatbot.FinSproutAnimatedAvatar
 import com.example.nhoms8.model.ChatExpenseProposal
 import com.example.nhoms8.model.ChatMessage
 import com.example.nhoms8.model.ChatReminderProposal
@@ -91,7 +92,6 @@ import com.example.nhoms8.ui.theme.SpendlyIndigo
 import com.example.nhoms8.ui.theme.SpendlyLavender
 import com.example.nhoms8.ui.theme.SpendlyLavenderDeep
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
-import com.example.nhoms8.ui.theme.SpendlySky
 import com.example.nhoms8.ui.theme.SpendlyTextStyles
 import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
@@ -267,7 +267,7 @@ fun ChatbotScreen(
 }
 
 /**
- * Avatar mầm xanh kết hợp gradient Lavender–Indigo–Sky của FinSprout AI.
+ * Avatar động trích xuất từ video của Trợ lý FinSprout AI.
  */
 @Composable
 internal fun FinSproutAvatarBadge(
@@ -280,16 +280,11 @@ internal fun FinSproutAvatarBadge(
             modifier = Modifier
                 .size(size)
                 .clip(RoundedCornerShape((size.value * 0.34f).dp))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(SpendlyLavender, SpendlyIndigo, SpendlySky)
-                    )
-                ),
+                .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape((size.value * 0.34f).dp)),
             contentAlignment = Alignment.Center
         ) {
-            SproutIconBot(
-                modifier = Modifier.size(size * 0.56f),
-                color = Color.White
+            FinSproutAnimatedAvatar(
+                modifier = Modifier.fillMaxSize()
             )
         }
         if (showOnlineDot) {

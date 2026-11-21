@@ -1,6 +1,6 @@
 package com.example.nhoms8
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -50,12 +50,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -167,9 +164,11 @@ fun SignUpScreen(
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SproutMiniIcon(
-                        color = colors.onLavenderContainer,
-                        modifier = Modifier.size(16.dp)
+                    Image(
+                        painter = painterResource(id = R.drawable.spendly_app_logo),
+                        contentDescription = "Spendly Logo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -517,45 +516,6 @@ fun SignUpScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SproutMiniIcon(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        drawLine(
-            color = color,
-            start = Offset(w * 0.30f, h * 0.82f),
-            end = Offset(w * 0.70f, h * 0.82f),
-            strokeWidth = 1.8.dp.toPx(),
-            cap = StrokeCap.Round
-        )
-        val stem = Path().apply {
-            moveTo(w * 0.50f, h * 0.82f)
-            cubicTo(w * 0.50f, h * 0.55f, w * 0.49f, h * 0.42f, w * 0.49f, h * 0.28f)
-        }
-        drawPath(stem, color = color, style = stroke)
-
-        val leftLeaf = Path().apply {
-            moveTo(w * 0.50f, h * 0.55f)
-            cubicTo(w * 0.28f, h * 0.52f, w * 0.26f, h * 0.38f, w * 0.46f, h * 0.38f)
-            cubicTo(w * 0.50f, h * 0.44f, w * 0.50f, h * 0.50f, w * 0.50f, h * 0.55f)
-        }
-        drawPath(leftLeaf, color = color, style = stroke)
-
-        val rightLeaf = Path().apply {
-            moveTo(w * 0.49f, h * 0.38f)
-            cubicTo(w * 0.58f, h * 0.35f, w * 0.74f, h * 0.20f, w * 0.64f, h * 0.16f)
-            cubicTo(w * 0.52f, h * 0.14f, w * 0.46f, h * 0.26f, w * 0.49f, h * 0.38f)
-        }
-        drawPath(rightLeaf, color = color, style = stroke)
     }
 }
 

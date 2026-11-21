@@ -7,8 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -38,8 +36,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -77,10 +75,6 @@ fun WelcomeScreen() {
         label = "alpha_anim"
     )
 
-    val logoGradient = Brush.linearGradient(
-        colors = listOf(SpendlyLavender, SpendlyLavenderDeep, SpendlyIndigo)
-    )
-
     OrganicBackground(
         modifier = Modifier.fillMaxSize(),
         hazeState = hazeState
@@ -98,26 +92,12 @@ fun WelcomeScreen() {
 
             // 1. BRAND HEADER
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = Modifier
-                        .size(76.dp)
-                        .shadow(
-                            elevation = 14.dp,
-                            shape = RoundedCornerShape(24.dp),
-                            ambientColor = SpendlyLavenderDeep.copy(alpha = 0.4f),
-                            spotColor = SpendlyIndigo.copy(alpha = 0.4f)
-                        )
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(logoGradient)
-                        .border(
-                            width = 1.5.dp,
-                            color = Color.White.copy(alpha = 0.45f),
-                            shape = RoundedCornerShape(24.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SproutIcon(modifier = Modifier.size(38.dp))
-                }
+                Image(
+                    painter = painterResource(id = R.drawable.spendly_app_logo),
+                    contentDescription = "Spendly Logo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(92.dp)
+                )
 
                 Spacer(modifier = Modifier.height(18.dp))
 
@@ -204,49 +184,6 @@ fun WelcomeScreen() {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SproutIcon(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        val strokeColor = Color.White
-        val strokeStyle = Stroke(
-            width = 2.4.dp.toPx(),
-            cap = StrokeCap.Round,
-            join = StrokeJoin.Round
-        )
-
-        drawLine(
-            color = strokeColor,
-            start = Offset(w * 0.32f, h * 0.80f),
-            end = Offset(w * 0.68f, h * 0.80f),
-            strokeWidth = 2.4.dp.toPx(),
-            cap = StrokeCap.Round
-        )
-
-        val stemPath = Path().apply {
-            moveTo(w * 0.50f, h * 0.80f)
-            cubicTo(w * 0.50f, h * 0.55f, w * 0.49f, h * 0.40f, w * 0.49f, h * 0.28f)
-        }
-        drawPath(path = stemPath, color = strokeColor, style = strokeStyle)
-
-        val leftLeafPath = Path().apply {
-            moveTo(w * 0.50f, h * 0.55f)
-            cubicTo(w * 0.30f, h * 0.52f, w * 0.28f, h * 0.38f, w * 0.46f, h * 0.38f)
-            cubicTo(w * 0.50f, h * 0.44f, w * 0.50f, h * 0.50f, w * 0.50f, h * 0.55f)
-        }
-        drawPath(path = leftLeafPath, color = strokeColor, style = strokeStyle)
-
-        val rightLeafPath = Path().apply {
-            moveTo(w * 0.49f, h * 0.38f)
-            cubicTo(w * 0.58f, h * 0.35f, w * 0.72f, h * 0.20f, w * 0.64f, h * 0.16f)
-            cubicTo(w * 0.52f, h * 0.14f, w * 0.46f, h * 0.26f, w * 0.49f, h * 0.38f)
-        }
-        drawPath(path = rightLeafPath, color = strokeColor, style = strokeStyle)
     }
 }
 

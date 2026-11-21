@@ -47,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -60,15 +59,12 @@ import com.example.nhoms8.FinSproutAvatarBadge
 import com.example.nhoms8.FinSproutChatInputBar
 import com.example.nhoms8.FinSproutMessageList
 import com.example.nhoms8.FinSproutQuickPromptRow
-import com.example.nhoms8.SproutIconBot
 import com.example.nhoms8.core.designsystem.OrganicBackground
 import com.example.nhoms8.core.designsystem.spendlyGlassSurface
 import com.example.nhoms8.model.ChatMessage
 import com.example.nhoms8.ui.theme.SpendlyIndigo
-import com.example.nhoms8.ui.theme.SpendlyLavender
 import com.example.nhoms8.ui.theme.SpendlyLavenderDeep
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
-import com.example.nhoms8.ui.theme.SpendlySky
 import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
 import dev.chrisbanes.haze.HazeState
@@ -96,23 +92,15 @@ fun FinSproutFloatingBubble(
                     spotColor = SpendlyIndigo.copy(alpha = 0.45f)
                 )
                 .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(SpendlyLavender, SpendlyIndigo, SpendlySky)
-                    )
-                )
                 .border(
-                    width = 1.25.dp,
-                    color = Color.White.copy(alpha = 0.48f),
+                    width = 1.5.dp,
+                    color = Color.White.copy(alpha = 0.65f),
                     shape = CircleShape
                 )
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            SproutIconBot(
-                color = Color.White,
-                modifier = Modifier.size(25.dp)
-            )
+            FinSproutAnimatedAvatar(modifier = Modifier.fillMaxSize())
         }
 
         // Chấm xanh trực tuyến góc trên-phải của bong bóng

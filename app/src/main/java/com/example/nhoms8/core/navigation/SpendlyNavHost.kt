@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -78,6 +79,9 @@ import com.example.nhoms8.feature.groups.GroupViewModel
 import com.example.nhoms8.feature.groups.JoinGroupScreen
 import com.example.nhoms8.feature.groups.qr.QrScannerScreen
 import com.example.nhoms8.feature.notifications.NotificationsScreen
+import com.example.nhoms8.feature.profile.EditProfileScreen
+import com.example.nhoms8.feature.receipt.ReceiptScannerScreen
+import com.example.nhoms8.feature.receipt.ReceiptScannerViewModel
 import com.example.nhoms8.feature.settlements.SettlementV2Screen
 import com.example.nhoms8.feature.settlements.SettlementViewModel
 import com.example.nhoms8.feature.transactions.AddEditExpenseScreen
@@ -101,6 +105,7 @@ import com.google.firebase.auth.FirebaseUser
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -160,6 +165,7 @@ fun SpendlyNavHost(
     }.collectAsStateWithLifecycle()
 
     val bottomBarHazeState = rememberHazeState()
+    val navCoroutineScope = rememberCoroutineScope()
     var showAddSheet by remember { mutableStateOf(false) }
     var isChatPopupOpen by remember { mutableStateOf(false) }
 
@@ -196,10 +202,18 @@ fun SpendlyNavHost(
         spendTogetherViewModel.setActiveGroupId(selectedGroupId)
     }
 
-    // Đồng bộ số thông báo chưa đọc theo UID hiện tại
+    // Đồng bộ số thông báo chưa đọc & hồ sơ chủ cục bộ theo tài khoản đang đăng nhập
     LaunchedEffect(currentUser.uid) {
         if (currentUser.uid.isNotBlank()) {
             spendTogetherViewModel.observeUnreadNotificationsCount(currentUser.uid)
+        }
+    }
+    LaunchedEffect(currentUser.uid, currentUser.fullName, currentUser.email, currentUser.phone) {
+        if (currentUser.uid.isNotBlank() && currentUser.fullName.isNotBlank()) {
+            spendTogetherViewModel.updateLocalOwnerProfile(
+                name = currentUser.fullName,
+                phoneOrEmail = currentUser.phone.ifBlank { currentUser.email }
+            )
         }
     }
 
@@ -246,6 +260,33 @@ fun SpendlyNavHost(
     fun startIncomeFlowForActiveGroup() {
         val targetGroupId = resolveOrPromptActiveGroupId() ?: return
         navController.navigate(SpendlyRoutes.addIncome(targetGroupId))
+    }
+
+    fun startReceiptScannerForActiveGroup(target: String = "new_expense") {
+        if (currentUser.uid.isBlank()) {
+            Toast.makeText(
+                context,
+                "Vui lòng đăng nhập để quét hóa đơn thêm vào quỹ nhóm",
+                Toast.LENGTH_SHORT
+            ).show()
+            navController.navigate(SpendlyRoutes.LOGIN)
+            return
+        }
+        val targetGroupId = resolveOrPromptActiveGroupId() ?: return
+        val currentMember = activeGroupDetail.members
+            .takeIf { activeGroupDetail.group?.groupId == targetGroupId }
+            ?.firstOrNull { it.userId == currentUser.uid }
+        if (currentMember != null && (currentMember.role == GroupRole.VIEWER || !currentMember.canAddExpense)) {
+            Toast.makeText(
+                context,
+                "Tài khoản Người xem không có quyền thêm khoản chi vào nhóm này",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        navController.navigate(SpendlyRoutes.receiptScanner(targetGroupId, target)) {
+            launchSingleTop = true
+        }
     }
 
     fun handleDemoLogin(displayName: String, toastMessage: String) {
@@ -644,15 +685,14 @@ fun SpendlyNavHost(
                 composable(SpendlyRoutes.PROFILE) {
                     val displayUserName = currentUser.fullName.ifBlank { spendTogetherUiState.userProfile.name }.ifBlank { "Thành viên" }
                     val displayInitials = computeInitials(displayUserName)
-                    val contactInfo = currentUser.phone.ifBlank {
-                        currentUser.email.ifBlank { spendTogetherUiState.userProfile.phoneNumber }
-                    }
-                    val currentMemberRole = activeGroupDetail.members
-                        .firstOrNull { it.userId == currentUser.uid }
-                        ?.role
-                        ?.label
-                        ?: if (spendTogetherUiState.userProfile.isLeader) "Trưởng nhóm" else "Thành viên"
-                    val userSubtitle = "$contactInfo · $currentMemberRole"
+                    val ownerEmail = currentUser.email.ifBlank {
+                        SpendlyServiceLocator.authRepository.getCurrentUser()?.email.orEmpty()
+                    }.trim()
+                    val ownerPhone = currentUser.phone.trim()
+                    val userSubtitle = listOf(ownerEmail, ownerPhone)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · ")
+                        .ifBlank { "Tài khoản Spendly" }
 
                     val activeGroup = activeGroupDetail.group
                         ?: groupsUiState.groups.firstOrNull { it.groupId == activeGroupId }
@@ -692,6 +732,7 @@ fun SpendlyNavHost(
                         userName = displayUserName,
                         userInitials = displayInitials,
                         userSubtitle = userSubtitle,
+                        userAvatarUrl = currentUser.avatarUrl,
                         groupName = displayGroupName,
                         groupSubtitle = displayGroupSubtitle,
                         onQrCodeClicked = {
@@ -707,12 +748,16 @@ fun SpendlyNavHost(
                             }
                         },
                         onEditProfileClicked = {
-                            val matchedMember = spendTogetherUiState.members.find {
-                                it.id == spendTogetherUiState.userProfile.id ||
-                                    it.name.equals(displayUserName, ignoreCase = true)
-                            } ?: spendTogetherUiState.members.firstOrNull()
-                            matchedMember?.let { spendTogetherViewModel.onSelectMemberForEdit(it) }
-                            navController.navigate(SpendlyRoutes.EDIT_MEMBER)
+                            if (currentUser.uid.isBlank()) {
+                                Toast.makeText(
+                                    context,
+                                    "Vui lòng đăng nhập để chỉnh sửa thông tin cá nhân",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                navController.navigate(SpendlyRoutes.LOGIN)
+                            } else {
+                                navController.navigate(SpendlyRoutes.EDIT_PROFILE)
+                            }
                         },
                         onChangeGroupClicked = {
                             navigateToTopLevelTab(SpendlyRoutes.GROUPS)
@@ -1011,6 +1056,95 @@ fun SpendlyNavHost(
                         },
                         onBackClicked = {
                             navController.popBackStack()
+                        },
+                        onScanReceiptClicked = {
+                            startReceiptScannerForActiveGroup("fill_draft")
+                        }
+                    )
+                }
+
+                composable(
+                    route = SpendlyRoutes.RECEIPT_SCANNER,
+                    arguments = listOf(
+                        navArgument(SpendlyRoutes.ARG_GROUP_ID) { type = NavType.StringType },
+                        navArgument(SpendlyRoutes.ARG_RETURN_TARGET) {
+                            type = NavType.StringType
+                            defaultValue = "new_expense"
+                        }
+                    )
+                ) { backStackEntry ->
+                    val groupId = backStackEntry.arguments?.getString(SpendlyRoutes.ARG_GROUP_ID).orEmpty()
+                    val targetMode = backStackEntry.arguments
+                        ?.getString(SpendlyRoutes.ARG_RETURN_TARGET)
+                        .orEmpty()
+                        .ifBlank { "new_expense" }
+                    val scannerViewModel: ReceiptScannerViewModel = viewModel(
+                        factory = ReceiptScannerViewModel.factory(
+                            groupRepository = SpendlyServiceLocator.groupRepository,
+                            transactionRepository = SpendlyServiceLocator.transactionRepository,
+                            geminiChatRepository = SpendlyServiceLocator.geminiChatRepository
+                        )
+                    )
+
+                    ReceiptScannerScreen(
+                        groupId = groupId,
+                        currentUserId = currentUser.uid,
+                        targetMode = targetMode,
+                        viewModel = scannerViewModel,
+                        onBackClick = {
+                            navController.popBackStack()
+                        },
+                        onContinueWithReceipt = { reviewedResult, payerId, payerName ->
+                            when (targetMode) {
+                                "fill_draft" -> {
+                                    transactionViewModel.applyScannedReceiptToDraft(reviewedResult)
+                                    navController.popBackStack()
+                                }
+                                "chat", "chat_popup" -> {
+                                    spendTogetherViewModel.attachReceiptProposalToChat(
+                                        receipt = reviewedResult,
+                                        payerName = payerName,
+                                        groupName = activeGroupDetail.group?.name
+                                    )
+                                    navController.popBackStack()
+                                    if (targetMode == "chat_popup") {
+                                        isChatPopupOpen = true
+                                    }
+                                }
+                                else -> {
+                                    transactionViewModel.startNewExpenseFromReceipt(
+                                        groupId = groupId,
+                                        currentUserId = currentUser.uid,
+                                        receipt = reviewedResult,
+                                        preferredPayerId = payerId,
+                                        preferredPayerName = payerName
+                                    )
+                                    navController.navigate(SpendlyRoutes.ADD_EDIT_EXPENSE) {
+                                        popUpTo(SpendlyRoutes.RECEIPT_SCANNER) { inclusive = true }
+                                    }
+                                }
+                            }
+                        },
+                        onQuickSaved = { successMessage ->
+                            Toast.makeText(context, successMessage, Toast.LENGTH_SHORT).show()
+                            navController.popBackStack()
+                        },
+                        onManualEntryClick = { savedPath ->
+                            if (targetMode == "fill_draft") {
+                                if (savedPath.isNotBlank()) {
+                                    transactionViewModel.updateDraft(receiptUrl = savedPath)
+                                }
+                                navController.popBackStack()
+                            } else {
+                                transactionViewModel.startNewExpenseWithReceiptPath(
+                                    groupId = groupId,
+                                    currentUserId = currentUser.uid,
+                                    receiptPath = savedPath
+                                )
+                                navController.navigate(SpendlyRoutes.ADD_EDIT_EXPENSE) {
+                                    popUpTo(SpendlyRoutes.RECEIPT_SCANNER) { inclusive = true }
+                                }
+                            }
                         }
                     )
                 }
@@ -1104,7 +1238,10 @@ fun SpendlyNavHost(
                             ).show()
                         },
                         onClearChat = spendTogetherViewModel::clearChatHistory,
-                        activeGroupName = resolvedActiveGroupName
+                        activeGroupName = resolvedActiveGroupName,
+                        onScanReceiptClick = {
+                            startReceiptScannerForActiveGroup("chat")
+                        }
                     )
                 }
 
@@ -1404,6 +1541,56 @@ fun SpendlyNavHost(
                     )
                 }
 
+                composable(SpendlyRoutes.EDIT_PROFILE) {
+                    var isSavingProfile by remember { mutableStateOf(false) }
+                    var profileErrorMessage by remember { mutableStateOf<String?>(null) }
+                    val ownerEmail = currentUser.email.ifBlank {
+                        SpendlyServiceLocator.authRepository.getCurrentUser()?.email.orEmpty()
+                    }
+                    val ownerUser = currentUser.copy(email = ownerEmail)
+
+                    EditProfileScreen(
+                        user = ownerUser,
+                        isSaving = isSavingProfile,
+                        errorMessage = profileErrorMessage,
+                        onBackClicked = {
+                            navController.popBackStack()
+                        },
+                        onChangePasswordClicked = {
+                            navController.navigate(SpendlyRoutes.forgotPassword(ownerUser.email))
+                        },
+                        onSaveClicked = { fullName, phone, avatarUrl ->
+                            isSavingProfile = true
+                            profileErrorMessage = null
+                            groupViewModel.updateCurrentUserProfile(
+                                fullName = fullName,
+                                phone = phone,
+                                avatarUrl = avatarUrl,
+                                onSuccess = { updated ->
+                                    navCoroutineScope.launch {
+                                        SpendlyServiceLocator.authRepository.updateDisplayName(updated.fullName)
+                                    }
+                                    spendTogetherViewModel.updateLocalOwnerProfile(
+                                        name = updated.fullName,
+                                        phoneOrEmail = updated.phone.ifBlank { updated.email }
+                                    )
+                                    isSavingProfile = false
+                                    Toast.makeText(
+                                        context,
+                                        "Đã cập nhật thông tin cá nhân",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    navController.popBackStack()
+                                },
+                                onError = { message ->
+                                    isSavingProfile = false
+                                    profileErrorMessage = message
+                                }
+                            )
+                        }
+                    )
+                }
+
                 composable(SpendlyRoutes.EDIT_MEMBER) {
                     val activeMember = spendTogetherUiState.selectedMember
                         ?: spendTogetherUiState.members.firstOrNull()
@@ -1498,7 +1685,11 @@ fun SpendlyNavHost(
                     Toast.LENGTH_SHORT
                 ).show()
             },
-            onClearChat = spendTogetherViewModel::clearChatHistory
+            onClearChat = spendTogetherViewModel::clearChatHistory,
+            onScanReceiptClick = {
+                isChatPopupOpen = false
+                startReceiptScannerForActiveGroup("chat_popup")
+            }
         )
     }
 
@@ -1523,6 +1714,9 @@ fun SpendlyNavHost(
                     activateGroupEverywhere(effectiveGroupId, groupViewModel, spendTogetherViewModel)
                 }
                 isChatPopupOpen = true
+            },
+            onScanReceiptClick = {
+                startReceiptScannerForActiveGroup("new_expense")
             }
         )
     }

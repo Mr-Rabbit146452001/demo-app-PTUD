@@ -42,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,7 +66,6 @@ import androidx.compose.ui.unit.dp
 import com.example.nhoms8.core.designsystem.GlassCard
 import com.example.nhoms8.core.designsystem.OrganicBackground
 import com.example.nhoms8.core.designsystem.SpendlyButton
-import com.example.nhoms8.core.designsystem.SpendlyButtonStyle
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
 import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
@@ -146,11 +144,7 @@ fun LoginScreen(
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = colors.textPrimary
                         )
-                        Text(
-                            text = "Chi tiêu cá nhân & quỹ nhóm",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textMuted
-                        )
+
                     }
                 }
 

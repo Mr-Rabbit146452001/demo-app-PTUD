@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,6 +64,7 @@ fun AddTransactionModalSheet(
     onAiQuickEntryClick: () -> Unit,
     modifier: Modifier = Modifier,
     activeGroupName: String? = null,
+    onScanReceiptClick: (() -> Unit)? = null,
     @Suppress("UNUSED_PARAMETER")
     hazeState: HazeState? = null
 ) {
@@ -93,6 +95,12 @@ fun AddTransactionModalSheet(
             onAiQuickEntryClick = {
                 onDismissRequest()
                 onAiQuickEntryClick()
+            },
+            onScanReceiptClick = onScanReceiptClick?.let { handler ->
+                {
+                    onDismissRequest()
+                    handler()
+                }
             }
         )
     }
@@ -104,7 +112,8 @@ internal fun AddTransactionSheetContent(
     onAddExpenseClick: () -> Unit,
     onAddIncomeClick: () -> Unit,
     onAiQuickEntryClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onScanReceiptClick: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.spendlyColors
 
@@ -158,6 +167,20 @@ internal fun AddTransactionSheetContent(
             tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.25f else 0.48f),
             onClick = onAddExpenseClick
         )
+
+        if (onScanReceiptClick != null) {
+            TransactionSheetOptionCard(
+                title = "Quét hóa đơn bằng AI",
+                subtitle = "Chụp hoặc chọn ảnh hóa đơn để AI tự điền tiền, quán & danh mục",
+                icon = Icons.Rounded.DocumentScanner,
+                iconBackground = Brush.linearGradient(
+                    colors = listOf(SpendlyLavender, SpendlyIndigo)
+                ),
+                tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.22f else 0.40f),
+                badgeText = "AI Vision",
+                onClick = onScanReceiptClick
+            )
+        }
 
         TransactionSheetOptionCard(
             title = "Thêm khoản thu / Nạp quỹ",
@@ -297,7 +320,8 @@ private fun AddTransactionModalSheetPreview() {
                     activeGroupName = "Quỹ Chi Tiêu Nhóm 08",
                     onAddExpenseClick = {},
                     onAddIncomeClick = {},
-                    onAiQuickEntryClick = {}
+                    onAiQuickEntryClick = {},
+                    onScanReceiptClick = {}
                 )
             }
         }

@@ -167,6 +167,46 @@ class FirebaseAuthRepository(
         }
 
     /**
+     * Cập nhật tên hiển thị (displayName) trên Firebase Auth cho tài khoản hiện tại.
+     */
+    suspend fun updateDisplayName(displayName: String): AuthResult =
+        suspendCancellableCoroutine { continuation ->
+            val trimmed = displayName.trim()
+            if (trimmed.isEmpty()) {
+                continuation.resume(AuthResult.Error("Họ và tên không được để trống"))
+                return@suspendCancellableCoroutine
+            }
+
+            val currentAuth = auth ?: run {
+                continuation.resume(AuthResult.Success(null, "Đã cập nhật tên hiển thị cục bộ"))
+                return@suspendCancellableCoroutine
+            }
+
+            val user = currentAuth.currentUser ?: run {
+                continuation.resume(AuthResult.Error("Bạn chưa đăng nhập tài khoản"))
+                return@suspendCancellableCoroutine
+            }
+
+            val profileUpdate = UserProfileChangeRequest.Builder()
+                .setDisplayName(trimmed)
+                .build()
+
+            user.updateProfile(profileUpdate)
+                .addOnSuccessListener {
+                    if (continuation.isActive) {
+                        continuation.resume(
+                            AuthResult.Success(user, "Đã cập nhật tên hiển thị tài khoản")
+                        )
+                    }
+                }
+                .addOnFailureListener { exception ->
+                    if (continuation.isActive) {
+                        continuation.resume(AuthResult.Error(mapFirebaseException(exception)))
+                    }
+                }
+        }
+
+    /**
      * Đăng xuất khỏi Firebase
      */
     fun signOut() {

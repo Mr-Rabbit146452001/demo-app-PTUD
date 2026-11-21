@@ -28,6 +28,7 @@ import com.example.nhoms8.domain.usecase.EngineSplitMode
 import com.example.nhoms8.domain.usecase.ParticipantInput
 import com.example.nhoms8.domain.usecase.SplitCalculationEngine
 import com.example.nhoms8.domain.usecase.SplitValidationResult
+import com.example.nhoms8.feature.receipt.ScannedReceiptResult
 import com.example.nhoms8.model.BudgetState
 import com.example.nhoms8.model.ChatExpenseProposal
 import com.example.nhoms8.model.ChatMessage
@@ -133,7 +134,9 @@ class SpendTogetherViewModel(
         // Tự động đồng bộ tài khoản Firebase nếu đã đăng nhập từ trước
         firebaseAuthRepository.getCurrentUser()?.let { user ->
             val email = user.email ?: ""
-            val name = user.displayName?.takeIf { it.isNotBlank() } ?: "Lê Văn Hùng"
+            val name = user.displayName?.takeIf { it.isNotBlank() }
+                ?: email.substringBefore('@').takeIf { it.isNotBlank() }
+                ?: "Thành viên Spendly"
             repository.login(email, name)
             syncFirebaseUser(user.uid, name, email)
         }
@@ -407,6 +410,18 @@ class SpendTogetherViewModel(
     }
 
     /**
+     * Đồng bộ thông tin tài khoản chủ vừa cập nhật vào hồ sơ cục bộ cho FinSprout AI & các màn hình cũ.
+     */
+    fun updateLocalOwnerProfile(name: String, phoneOrEmail: String) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return
+        repository.login(
+            phoneNumber = phoneOrEmail.trim(),
+            name = cleanName
+        )
+    }
+
+    /**
      * Theo dõi số lượng thông báo chưa đọc theo thời gian thực cho người dùng [uid].
      */
     fun observeUnreadNotificationsCount(uid: String) {
@@ -433,13 +448,16 @@ class SpendTogetherViewModel(
                     _authLoading.value = false
                     _firebaseUserEmail.value = result.user?.email
                     _authSuccessMessage.value = result.message
-                    val displayName = result.user?.displayName?.takeIf { it.isNotBlank() } ?: "Lê Văn Hùng"
+                    val resolvedEmail = result.user?.email ?: emailOrPhone
+                    val displayName = result.user?.displayName?.takeIf { it.isNotBlank() }
+                        ?: resolvedEmail.substringBefore('@').takeIf { it.isNotBlank() }
+                        ?: "Thành viên Spendly"
                     repository.login(emailOrPhone, displayName)
                     result.user?.let { fbUser ->
                         syncFirebaseUser(
                             uid = fbUser.uid,
                             name = displayName,
-                            email = fbUser.email ?: emailOrPhone
+                            email = resolvedEmail
                         )
                     }
                     onSuccess()
@@ -1085,7 +1103,7 @@ class SpendTogetherViewModel(
             title = proposal.title,
             amount = proposal.amount,
             category = proposal.category,
-            note = "Ghi nhanh qua FinSprout AI",
+            note = proposal.description.ifBlank { "Ghi nhanh qua FinSprout AI" },
             payerId = legacyPayerId,
             selectedMemberIds = allMemberIds,
             mode = SplitMode.EQUAL
@@ -1166,13 +1184,14 @@ class SpendTogetherViewModel(
                     groupId = activeGroupId,
                     title = proposal.title,
                     amount = proposal.amount,
-                    category = SpendlyCategory.fromLegacy(proposal.category),
+                    category = proposal.spendlyCategory ?: SpendlyCategory.fromLegacy(proposal.category),
                     payerId = payerMember.userId,
                     payerName = payerMember.displayName,
                     createdBy = creatorMember.userId,
                     splitType = SplitMethod.EQUAL,
-                    description = "Ghi nhanh qua FinSprout AI",
-                    expenseDateMillis = now,
+                    description = proposal.description.ifBlank { "Ghi nhanh qua FinSprout AI" },
+                    receiptUrl = proposal.receiptUrl,
+                    expenseDateMillis = proposal.expenseDateMillis ?: now,
                     createdAtMillis = now,
                     updatedAtMillis = now,
                     status = RecordStatus.ACTIVE
@@ -1217,6 +1236,58 @@ class SpendTogetherViewModel(
                 )
             }
         }
+    }
+
+    /**
+     * Đính kèm kết quả quét hóa đơn AI thành thẻ đề xuất khoản chi 1 chạm trong khung chat FinSprout.
+     */
+    fun attachReceiptProposalToChat(
+        receipt: ScannedReceiptResult,
+        payerName: String,
+        groupName: String? = null
+    ) {
+        val resolvedTitle = receipt.title.ifBlank { "Khoản chi từ hóa đơn" }
+        val resolvedAmount = receipt.totalAmount.coerceAtLeast(0L)
+        val formattedAmount = FintechAlgorithm.formatVnd(resolvedAmount)
+        val resolvedPayer = payerName.ifBlank {
+            uiState.value.userProfile.name.ifBlank { "Thành viên" }
+        }
+        val activeGroupLabel = groupName?.takeIf { it.isNotBlank() }
+            ?: uiState.value.activeGroupName.takeIf { it.isNotBlank() }
+            ?: "cả nhóm"
+
+        val userMsg = ChatMessage(
+            text = "📷 Đã quét hóa đơn: $resolvedTitle ($formattedAmount)",
+            isFromUser = true,
+            timestampFormatted = "Vừa xong"
+        )
+        val botMsg = ChatMessage(
+            text = buildString {
+                append("FinSprout đã đọc xong hóa đơn của bạn! 🧾")
+                if (!receipt.warningMessage.isNullOrBlank()) {
+                    append("\n⚠️ Lưu ý: ${receipt.warningMessage}")
+                }
+                append("\nKiểm tra lại thông tin và bấm Xác nhận lưu bên dưới nhé:")
+            },
+            isFromUser = false,
+            timestampFormatted = "Vừa xong",
+            expenseProposal = ChatExpenseProposal(
+                title = resolvedTitle,
+                amount = resolvedAmount,
+                amountFormatted = formattedAmount,
+                category = receipt.category.toLegacyExpenseCategory(),
+                categoryName = receipt.category.label,
+                payerName = resolvedPayer,
+                splitSummary = "Chia đều cho $activeGroupLabel",
+                isConfirmed = false,
+                spendlyCategory = receipt.category,
+                description = receipt.description,
+                receiptUrl = receipt.savedReceiptPath,
+                expenseDateMillis = receipt.expenseDateMillis
+            )
+        )
+
+        _chatMessages.update { list -> list + userMsg + botMsg }
     }
 
     fun clearChatHistory() {

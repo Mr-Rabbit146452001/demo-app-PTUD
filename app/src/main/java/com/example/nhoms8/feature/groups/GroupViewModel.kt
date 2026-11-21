@@ -395,8 +395,13 @@ class GroupViewModel @JvmOverloads constructor(
     init {
         viewModelScope.launch {
             userProfileSyncFlow.collect { profile ->
-                if (profile != null && profile.uid == _currentUser.value.uid) {
-                    _currentUser.value = profile
+                val current = _currentUser.value
+                if (profile != null && profile.uid == current.uid) {
+                    _currentUser.value = if (profile.email.isBlank() && current.email.isNotBlank()) {
+                        profile.copy(email = current.email)
+                    } else {
+                        profile
+                    }
                 }
             }
         }
@@ -456,6 +461,72 @@ class GroupViewModel @JvmOverloads constructor(
                     }
                 }
             _isBootstrapping.value = false
+        }
+    }
+
+    /**
+     * Cập nhật hồ sơ cá nhân của tài khoản chủ đang đăng nhập (`users/{uid}`) và đồng bộ ngay trạng thái UI.
+     */
+    fun updateCurrentUserProfile(
+        fullName: String,
+        phone: String,
+        avatarUrl: String? = null,
+        onSuccess: (SpendlyUser) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val current = _currentUser.value
+        if (current.uid.isBlank()) {
+            val message = "Vui lòng đăng nhập để chỉnh sửa thông tin cá nhân"
+            _operationStatus.update { it.copy(isSubmitting = false, errorMessage = message) }
+            onError(message)
+            return
+        }
+
+        val validationError = validateProfileInput(fullName, phone)
+        if (validationError != null) {
+            _operationStatus.update { it.copy(isSubmitting = false, errorMessage = validationError) }
+            onError(validationError)
+            return
+        }
+
+        val trimmedName = fullName.trim()
+        val trimmedPhone = phone.trim()
+        val trimmedAvatar = avatarUrl?.trim()
+
+        viewModelScope.launch {
+            _operationStatus.update {
+                it.copy(isSubmitting = true, errorMessage = null, successMessage = null)
+            }
+            userRepository.updateUserProfile(
+                uid = current.uid,
+                fullName = trimmedName,
+                phone = trimmedPhone,
+                avatarUrl = trimmedAvatar
+            ).onSuccess {
+                val updatedUser = current.copy(
+                    fullName = trimmedName,
+                    phone = trimmedPhone,
+                    avatarUrl = trimmedAvatar ?: current.avatarUrl,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+                if (_currentUser.value.uid == updatedUser.uid) {
+                    _currentUser.value = updatedUser
+                }
+                _operationStatus.update {
+                    it.copy(
+                        isSubmitting = false,
+                        errorMessage = null,
+                        successMessage = "Đã cập nhật thông tin cá nhân"
+                    )
+                }
+                onSuccess(updatedUser)
+            }.onFailure { error ->
+                val message = error.message ?: "Không thể cập nhật thông tin cá nhân"
+                _operationStatus.update {
+                    it.copy(isSubmitting = false, errorMessage = message)
+                }
+                onError(message)
+            }
         }
     }
 
@@ -956,6 +1027,33 @@ class GroupViewModel @JvmOverloads constructor(
     )
 
     companion object {
+        /**
+         * Kiểm tra hợp lệ họ tên & số điện thoại của tài khoản chủ trước khi lưu.
+         * Trả về thông báo lỗi tiếng Việt hoặc `null` nếu hợp lệ.
+         */
+        fun validateProfileInput(fullName: String, phone: String): String? {
+            val trimmedName = fullName.trim()
+            if (trimmedName.isEmpty()) {
+                return "Vui lòng nhập họ và tên"
+            }
+            if (trimmedName.length < 2) {
+                return "Họ và tên cần có ít nhất 2 ký tự"
+            }
+
+            val trimmedPhone = phone.trim()
+            if (trimmedPhone.isNotEmpty()) {
+                val normalized = trimmedPhone
+                    .replace(" ", "")
+                    .replace("-", "")
+                    .replace(".", "")
+                val digitsOnly = if (normalized.startsWith("+")) normalized.drop(1) else normalized
+                if (digitsOnly.length !in 9..15 || !digitsOnly.all { it.isDigit() }) {
+                    return "Số điện thoại không hợp lệ (cần 9–15 chữ số)"
+                }
+            }
+            return null
+        }
+
         val DEFAULT_OFFLINE_USER = SpendlyUser(
             uid = "user_hung",
             fullName = "Lê Văn Hùng",

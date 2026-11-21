@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PieChart
+import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
@@ -66,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.example.nhoms8.algorithm.FintechAlgorithm
 import com.example.nhoms8.core.designsystem.GlassCard
 import com.example.nhoms8.core.designsystem.GradientCard
@@ -77,12 +81,14 @@ import com.example.nhoms8.domain.model.RecordStatus
 import com.example.nhoms8.domain.model.SpendlyCategory
 import com.example.nhoms8.domain.model.SpendlyExpense
 import com.example.nhoms8.domain.model.SplitMethod
+import com.example.nhoms8.feature.receipt.ReceiptFullImageDialog
 import com.example.nhoms8.ui.theme.SpendlyCoralDeep
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
 import com.example.nhoms8.ui.theme.SpendlyTextStyles
 import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
 import dev.chrisbanes.haze.rememberHazeState
+import java.io.File
 
 /**
  * Màn hình Chi tiết khoản chi hiển thị trạng thái sổ cái (`ACTIVE` / `CANCELLED`),
@@ -138,9 +144,22 @@ fun ExpenseDetailContent(
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     var showCancelDialog by remember { mutableStateOf(false) }
+    var showFullReceiptImage by remember { mutableStateOf(false) }
 
     val expense = detailState.expense
     val isActive = expense?.status == RecordStatus.ACTIVE
+    val localReceiptPath = remember(expense?.receiptUrl) {
+        val raw = expense?.receiptUrl?.trim().orEmpty()
+        if (raw.isEmpty() ||
+            raw.startsWith("http://", ignoreCase = true) ||
+            raw.startsWith("https://", ignoreCase = true)
+        ) {
+            null
+        } else {
+            val path = raw.removePrefix("file://")
+            path.takeIf { File(it).exists() }
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         OrganicBackground(
@@ -375,9 +394,13 @@ fun ExpenseDetailContent(
                                             color = colors.textPrimary
                                         )
                                         Text(
-                                            text = expense.receiptUrl,
+                                            text = if (localReceiptPath != null) {
+                                                "Ảnh chụp hóa đơn lưu trong ứng dụng"
+                                            } else {
+                                                expense.receiptUrl
+                                            },
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = colors.deepLavender,
+                                            color = if (localReceiptPath != null) colors.textMuted else colors.deepLavender,
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -386,37 +409,62 @@ fun ExpenseDetailContent(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    ReceiptActionPill(
-                                        icon = Icons.Rounded.ContentCopy,
-                                        label = "Sao chép link",
-                                        onClick = {
-                                            copyToClipboard(context, expense.receiptUrl)
-                                            Toast.makeText(
-                                                context,
-                                                "Đã sao chép link hóa đơn",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
+                                if (localReceiptPath != null) {
+                                    AsyncImage(
+                                        model = File(localReceiptPath),
+                                        contentDescription = "Ảnh hóa đơn đính kèm",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .border(1.dp, colors.divider, RoundedCornerShape(14.dp))
+                                            .clickable { showFullReceiptImage = true }
                                     )
-                                    ReceiptActionPill(
-                                        icon = Icons.AutoMirrored.Rounded.OpenInNew,
-                                        label = "Mở liên kết",
-                                        onClick = {
-                                            runCatching {
-                                                uriHandler.openUri(expense.receiptUrl)
-                                            }.onFailure {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        ReceiptActionPill(
+                                            icon = Icons.Rounded.ZoomIn,
+                                            label = "Xem toàn màn hình",
+                                            onClick = { showFullReceiptImage = true }
+                                        )
+                                    }
+                                } else {
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        ReceiptActionPill(
+                                            icon = Icons.Rounded.ContentCopy,
+                                            label = "Sao chép link",
+                                            onClick = {
+                                                copyToClipboard(context, expense.receiptUrl)
                                                 Toast.makeText(
                                                     context,
-                                                    "Không thể mở đường dẫn hóa đơn này",
+                                                    "Đã sao chép link hóa đơn",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
                                             }
-                                        }
-                                    )
+                                        )
+                                        ReceiptActionPill(
+                                            icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                                            label = "Mở liên kết",
+                                            onClick = {
+                                                runCatching {
+                                                    uriHandler.openUri(expense.receiptUrl)
+                                                }.onFailure {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Không thể mở đường dẫn hóa đơn này",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -644,6 +692,13 @@ fun ExpenseDetailContent(
                     Text("Giữ lại", color = colors.textMuted)
                 }
             }
+        )
+    }
+
+    if (showFullReceiptImage && localReceiptPath != null) {
+        ReceiptFullImageDialog(
+            imagePath = localReceiptPath,
+            onDismiss = { showFullReceiptImage = false }
         )
     }
 }

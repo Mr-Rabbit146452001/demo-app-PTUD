@@ -17,6 +17,7 @@ import com.example.nhoms8.domain.usecase.EngineSplitMode
 import com.example.nhoms8.domain.usecase.ParticipantInput
 import com.example.nhoms8.domain.usecase.SplitCalculationEngine
 import com.example.nhoms8.domain.usecase.SplitValidationResult
+import com.example.nhoms8.feature.receipt.ScannedReceiptResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -161,6 +162,70 @@ class TransactionViewModel(
                         preferredUserId = currentUserId
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * Khởi tạo bản nháp khoản chi mới cho [groupId] điền sẵn dữ liệu AI đọc từ hóa đơn.
+     */
+    fun startNewExpenseFromReceipt(
+        groupId: String,
+        currentUserId: String,
+        receipt: ScannedReceiptResult,
+        preferredPayerId: String? = null,
+        preferredPayerName: String? = null
+    ) {
+        startNewExpense(groupId = groupId, currentUserId = currentUserId)
+        val resolvedPayerId = preferredPayerId?.takeIf { it.isNotBlank() } ?: currentUserId
+        _draftState.update { current ->
+            recomputeValidation(
+                current.copy(
+                    title = receipt.title,
+                    amount = receipt.totalAmount.coerceAtLeast(0L),
+                    category = receipt.category,
+                    payerId = resolvedPayerId,
+                    payerName = preferredPayerName?.takeIf { it.isNotBlank() } ?: current.payerName,
+                    description = receipt.description,
+                    receiptUrl = receipt.savedReceiptPath,
+                    expenseDateMillis = receipt.expenseDateMillis ?: System.currentTimeMillis(),
+                    errorMessage = null
+                )
+            )
+        }
+    }
+
+    /**
+     * Điền dữ liệu hóa đơn AI vừa quét vào bản nháp khoản chi đang soạn dở (giữ nguyên nhóm & thành viên).
+     */
+    fun applyScannedReceiptToDraft(receipt: ScannedReceiptResult) {
+        _draftState.update { current ->
+            recomputeValidation(
+                current.copy(
+                    title = receipt.title.ifBlank { current.title },
+                    amount = if (receipt.totalAmount > 0L) receipt.totalAmount else current.amount,
+                    category = receipt.category,
+                    description = receipt.description.ifBlank { current.description },
+                    receiptUrl = receipt.savedReceiptPath.ifBlank { current.receiptUrl },
+                    expenseDateMillis = receipt.expenseDateMillis ?: current.expenseDateMillis,
+                    errorMessage = null
+                )
+            )
+        }
+    }
+
+    /**
+     * Khởi tạo bản nháp nhập thủ công kèm ảnh hóa đơn đã chụp (dùng khi AI đọc chưa chuẩn).
+     */
+    fun startNewExpenseWithReceiptPath(
+        groupId: String,
+        currentUserId: String,
+        receiptPath: String
+    ) {
+        startNewExpense(groupId = groupId, currentUserId = currentUserId)
+        if (receiptPath.isNotBlank()) {
+            _draftState.update { current ->
+                current.copy(receiptUrl = receiptPath)
             }
         }
     }

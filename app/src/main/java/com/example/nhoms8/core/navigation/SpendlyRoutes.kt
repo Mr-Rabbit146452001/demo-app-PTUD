@@ -11,6 +11,7 @@ object SpendlyRoutes {
     const val ARG_GROUP_ID = "groupId"
     const val ARG_EXPENSE_ID = "expenseId"
     const val ARG_INITIAL_TAB = "tab"
+    const val ARG_RETURN_TARGET = "target"
 
     // Onboarding & Auth routes
     const val SPLASH = "splash"
@@ -39,6 +40,8 @@ object SpendlyRoutes {
     // Transaction & Split V2 routes
     const val ADD_EDIT_EXPENSE = "add_edit_expense"
     const val SPLIT_BILL_V2 = "split_bill_v2"
+    const val RECEIPT_SCANNER_BASE = "receipt_scanner"
+    const val RECEIPT_SCANNER = "$RECEIPT_SCANNER_BASE/{$ARG_GROUP_ID}?$ARG_RETURN_TARGET={$ARG_RETURN_TARGET}"
     const val ADD_INCOME = "add_income/{$ARG_GROUP_ID}"
     const val EXPENSE_DETAIL = "expense_detail/{$ARG_GROUP_ID}/{$ARG_EXPENSE_ID}"
 
@@ -48,6 +51,9 @@ object SpendlyRoutes {
 
     // AI Chatbot route
     const val CHATBOT = "chatbot"
+
+    // Profile & Account routes
+    const val EDIT_PROFILE = "edit_profile"
 
     // Legacy & full-view routes kept operational
     const val HISTORY = "history"
@@ -81,6 +87,11 @@ object SpendlyRoutes {
     fun settlementV2(groupId: String): String = "settlement_v2/${Uri.encode(groupId)}"
 
     fun budgets(groupId: String): String = "budgets/${Uri.encode(groupId)}"
+
+    fun receiptScanner(groupId: String, target: String = "new_expense"): String {
+        val safeTarget = target.trim().ifEmpty { "new_expense" }
+        return "$RECEIPT_SCANNER_BASE/${Uri.encode(groupId)}?$ARG_RETURN_TARGET=${Uri.encode(safeTarget)}"
+    }
 
     fun tabForRoute(route: String?): SpendlyTab? = when (route) {
         HOME -> SpendlyTab.HOME

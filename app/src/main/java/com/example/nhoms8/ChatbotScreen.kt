@@ -41,9 +41,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
@@ -63,7 +63,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -99,11 +98,8 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.rememberHazeState
 
 internal val FIN_SPROUT_QUICK_PROMPTS = listOf(
-    "🍲 Ăn trưa 180k Hùng trả, chia đều",
-    "📊 Tình hình quỹ tháng này thế nào?",
-    "⚖️ Ai đang nợ ai trong nhóm?",
-    "💌 Nhắc nợ bạn Linh tiền đồ án",
-    "💡 Mẹo tiết kiệm chi tiêu cho nhóm"
+    "📊 Tình hình quỹ tháng này thế nào?"
+
 )
 
 /**
@@ -121,7 +117,8 @@ fun ChatbotScreen(
     onSendMessage: (String) -> Unit = {},
     onConfirmExpense: (String) -> Unit = {},
     onClearChat: () -> Unit = {},
-    activeGroupName: String? = null
+    activeGroupName: String? = null,
+    onScanReceiptClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val colors = MaterialTheme.spendlyColors
@@ -187,7 +184,7 @@ fun ChatbotScreen(
                                             .padding(horizontal = 7.dp, vertical = 2.dp)
                                     ) {
                                         Text(
-                                            text = "Gemini 2.5 Flash ✨",
+                                            text = "Gemini 2.5 Flash",
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = colors.onLavenderContainer
@@ -196,7 +193,7 @@ fun ChatbotScreen(
                                 }
                                 Text(
                                     text = activeGroupName?.takeIf { it.isNotBlank() }?.let {
-                                        "Đang kết nối quỹ: $it"
+                                        " $it"
                                     } ?: "Trực tuyến · Ghi chi tiêu & phân tích quỹ",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textMuted,
@@ -258,6 +255,7 @@ fun ChatbotScreen(
                     }
                 },
                 hazeState = hazeState,
+                onScanReceiptClick = onScanReceiptClick,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -407,7 +405,8 @@ internal fun FinSproutChatInputBar(
     onSend: () -> Unit,
     hazeState: HazeState?,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    onScanReceiptClick: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.spendlyColors
     val canSend = inputText.isNotBlank()
@@ -425,6 +424,26 @@ internal fun FinSproutChatInputBar(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onScanReceiptClick != null) {
+                Box(
+                    modifier = Modifier
+                        .size(if (compact) 40.dp else 44.dp)
+                        .clip(CircleShape)
+                        .background(colors.lavenderContainer)
+                        .border(1.dp, colors.primaryLavender.copy(alpha = 0.35f), CircleShape)
+                        .clickable(onClick = onScanReceiptClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.DocumentScanner,
+                        contentDescription = "Quét hóa đơn AI",
+                        tint = colors.deepLavender,
+                        modifier = Modifier.size(if (compact) 18.dp else 20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+
             OutlinedTextField(
                 value = inputText,
                 onValueChange = onInputChange,
@@ -485,37 +504,7 @@ internal fun FinSproutChatInputBar(
 @Composable
 private fun FinSproutIntroCard(hazeState: HazeState?) {
     val colors = MaterialTheme.spendlyColors
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        hazeState = hazeState,
-        shape = SpendlyShapeTokens.CardMedium,
-        tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.35f else 0.65f),
-        contentPadding = PaddingValues(14.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Rounded.AutoAwesome,
-                contentDescription = null,
-                tint = colors.deepLavender,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Mẹo sử dụng FinSprout AI",
-                style = MaterialTheme.typography.titleSmall,
-                color = colors.textPrimary
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = "• Chat \"Ăn lẩu 650k Hùng trả\" để tạo khoản chi 1-chạm\n" +
-                "• Hỏi \"Tình hình quỹ\" hoặc \"Ai đang nợ ai?\" để tra số liệu thật\n" +
-                "• Nhờ \"Viết tin nhắn nhắc nợ bạn Linh\" để đòi tiền khéo léo",
-            style = MaterialTheme.typography.bodySmall,
-            lineHeight = 18.sp,
-            color = colors.textMuted
-        )
-    }
+
 }
 
 @Composable

@@ -199,6 +199,12 @@ class FirestoreSpendlyRepository(
         avatarUrl: String?
     ): Result<Unit> = runCatchingSuspend {
         require(uid.isNotBlank()) { "UID người dùng không được để trống" }
+        val trimmedName = fullName?.trim()
+        if (fullName != null) {
+            require(!trimmedName.isNullOrBlank()) { "Họ và tên không được để trống" }
+        }
+        val trimmedPhone = phone?.trim()
+        val trimmedAvatar = avatarUrl?.trim()
         val now = clock()
 
         val db = firestore
@@ -206,28 +212,136 @@ class FirestoreSpendlyRepository(
             memoryMutex.withLock {
                 val state = memoryDb.value
                 val existing = state.users[uid]
-                    ?: throw NoSuchElementException("Không tìm thấy hồ sơ người dùng")
-                val updated = existing.copy(
-                    fullName = fullName?.trim()?.ifBlank { existing.fullName } ?: existing.fullName,
-                    phone = phone?.trim() ?: existing.phone,
-                    avatarUrl = avatarUrl?.trim() ?: existing.avatarUrl,
-                    updatedAtMillis = now
+                val resolvedName = trimmedName ?: existing?.fullName.orEmpty().ifBlank { "Thành viên Spendly" }
+                val resolvedPhone = trimmedPhone ?: existing?.phone.orEmpty()
+                val resolvedAvatar = trimmedAvatar ?: existing?.avatarUrl.orEmpty()
+                val updatedUser = if (existing == null) {
+                    SpendlyUser(
+                        uid = uid,
+                        fullName = resolvedName,
+                        email = "",
+                        phone = resolvedPhone,
+                        avatarUrl = resolvedAvatar,
+                        createdAtMillis = now,
+                        updatedAtMillis = now,
+                        isActive = true
+                    )
+                } else {
+                    existing.copy(
+                        fullName = resolvedName,
+                        phone = resolvedPhone,
+                        avatarUrl = resolvedAvatar,
+                        updatedAtMillis = now
+                    )
+                }
+
+                val updatedMembersByGroup = if (trimmedName != null || trimmedPhone != null) {
+                    val newInitials = computeInitials(updatedUser.fullName)
+                    state.members.mapValues { (_, groupMembers) ->
+                        val existingMember = groupMembers[uid]
+                        if (existingMember == null) {
+                            groupMembers
+                        } else {
+                            groupMembers + (uid to existingMember.copy(
+                                displayName = if (trimmedName != null) updatedUser.fullName else existingMember.displayName,
+                                initials = if (trimmedName != null) newInitials else existingMember.initials,
+                                phone = if (trimmedPhone != null) updatedUser.phone else existingMember.phone
+                            ))
+                        }
+                    }
+                } else {
+                    state.members
+                }
+
+                memoryDb.value = state.copy(
+                    users = state.users + (uid to updatedUser),
+                    members = updatedMembersByGroup
                 )
-                memoryDb.value = state.copy(users = state.users + (uid to updated))
             }
         } else {
             val userRef = db.collection(COLLECTION_USERS).document(uid)
             val snapshot = userRef.get().await()
-            if (!snapshot.exists()) {
-                throw NoSuchElementException("Không tìm thấy hồ sơ người dùng")
-            }
+            val existingUser = if (snapshot.exists()) snapshot.toSpendlyUser() else null
             val updates = mutableMapOf<String, Any>(
                 "updatedAtMillis" to now
             )
-            fullName?.trim()?.takeIf { it.isNotBlank() }?.let { updates["fullName"] = it }
-            phone?.trim()?.let { updates["phone"] = it }
-            avatarUrl?.trim()?.let { updates["avatarUrl"] = it }
-            userRef.update(updates).await()
+            if (existingUser == null) {
+                updates["uid"] = uid
+                updates["fullName"] = trimmedName ?: "Thành viên Spendly"
+                updates["phone"] = trimmedPhone ?: ""
+                updates["avatarUrl"] = trimmedAvatar ?: ""
+                updates["createdAtMillis"] = now
+                updates["isActive"] = true
+            } else {
+                trimmedName?.let { updates["fullName"] = it }
+                trimmedPhone?.let { updates["phone"] = it }
+                trimmedAvatar?.let { updates["avatarUrl"] = it }
+            }
+            userRef.set(updates, SetOptions.merge()).await()
+
+            val memberUpdates = mutableMapOf<String, Any>()
+            if (trimmedName != null) {
+                memberUpdates["displayName"] = trimmedName
+                memberUpdates["initials"] = computeInitials(trimmedName)
+            }
+            if (trimmedPhone != null) {
+                memberUpdates["phone"] = trimmedPhone
+            }
+            if (memberUpdates.isNotEmpty()) {
+                propagateOwnerProfileToJoinedGroups(
+                    db = db,
+                    uid = uid,
+                    memberUpdates = memberUpdates
+                )
+            }
+        }
+    }
+
+    private suspend fun propagateOwnerProfileToJoinedGroups(
+        db: FirebaseFirestore,
+        uid: String,
+        memberUpdates: Map<String, Any>
+    ) {
+        try {
+            val groupsSnap = db.collection(COLLECTION_GROUPS)
+                .whereArrayContains("memberIds", uid)
+                .get()
+                .await()
+            if (groupsSnap.isEmpty) return
+
+            val memberRefs = groupsSnap.documents.map { groupDoc ->
+                groupCollection(db, groupDoc.id, SUBCOLLECTION_MEMBERS).document(uid)
+            }
+            try {
+                memberRefs.chunked(400).forEach { chunk ->
+                    val batch = db.batch()
+                    chunk.forEach { ref ->
+                        batch.set(ref, memberUpdates, SetOptions.merge())
+                    }
+                    batch.commit().await()
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: Exception) {
+                // Nếu một nhóm gặp hạn chế quyền ghi trong batch, thử cập nhật độc lập từng nhóm (best-effort)
+                coroutineScope {
+                    memberRefs.map { ref ->
+                        async {
+                            try {
+                                ref.update(memberUpdates).await()
+                            } catch (ce: CancellationException) {
+                                throw ce
+                            } catch (_: Exception) {
+                                Unit
+                            }
+                        }
+                    }.awaitAll()
+                }
+            }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            // Đồng bộ tên/SĐT sang các nhóm là best-effort; hồ sơ users/{uid} đã lưu thành công.
         }
     }
 

@@ -8,6 +8,7 @@ import com.example.nhoms8.HistoryTransactionItem
 import com.example.nhoms8.RecentTransaction
 import com.example.nhoms8.TransactionIconType
 import com.example.nhoms8.algorithm.FintechAlgorithm
+import com.example.nhoms8.domain.model.SpendlyCategory
 
 /**
  * Thông tin tài khoản người dùng đang đăng nhập (Trưởng nhóm: Lê Văn Hùng)
@@ -144,7 +145,11 @@ data class ChatExpenseProposal(
     val categoryName: String = "Ăn uống",
     val payerName: String = "Lê Văn Hùng",
     val splitSummary: String = "Chia đều cho cả nhóm",
-    val isConfirmed: Boolean = false
+    val isConfirmed: Boolean = false,
+    val spendlyCategory: SpendlyCategory? = null,
+    val description: String = "",
+    val receiptUrl: String = "",
+    val expenseDateMillis: Long? = null
 )
 
 /**

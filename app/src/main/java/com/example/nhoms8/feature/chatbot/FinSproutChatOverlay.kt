@@ -132,7 +132,8 @@ fun FinSproutChatPopup(
     onSendMessage: (String) -> Unit,
     onConfirmExpense: (String) -> Unit,
     onClearChat: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onScanReceiptClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val colors = MaterialTheme.spendlyColors
@@ -314,6 +315,7 @@ fun FinSproutChatPopup(
                         },
                         hazeState = hazeState,
                         compact = true,
+                        onScanReceiptClick = onScanReceiptClick,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 10.dp, end = 10.dp, bottom = 10.dp)

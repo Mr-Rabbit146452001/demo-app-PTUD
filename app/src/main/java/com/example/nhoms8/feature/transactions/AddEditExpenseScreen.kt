@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -31,11 +32,14 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CalendarToday
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.Celebration
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DirectionsCar
+import androidx.compose.material.icons.rounded.DocumentScanner
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Link
@@ -43,6 +47,7 @@ import androidx.compose.material.icons.rounded.MedicalServices
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.ShoppingBag
+import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -65,9 +70,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +88,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.example.nhoms8.algorithm.FintechAlgorithm
 import com.example.nhoms8.core.designsystem.GlassCard
 import com.example.nhoms8.core.designsystem.GradientCard
@@ -90,6 +98,7 @@ import com.example.nhoms8.core.designsystem.spendlyGlassSurface
 import com.example.nhoms8.domain.model.GroupRole
 import com.example.nhoms8.domain.model.SpendlyCategory
 import com.example.nhoms8.domain.model.SpendlyGroupMember
+import com.example.nhoms8.feature.receipt.ReceiptFullImageDialog
 import com.example.nhoms8.ui.theme.SpendlyIndigo
 import com.example.nhoms8.ui.theme.SpendlyLavender
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
@@ -99,6 +108,7 @@ import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.rememberHazeState
+import java.io.File
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.text.SimpleDateFormat
@@ -115,7 +125,8 @@ fun AddEditExpenseScreen(
     viewModel: TransactionViewModel,
     onContinueToSplit: () -> Unit,
     onBackClicked: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onScanReceiptClicked: (() -> Unit)? = null
 ) {
     val draft by viewModel.draftState.collectAsStateWithLifecycle()
 
@@ -135,7 +146,8 @@ fun AddEditExpenseScreen(
         },
         onContinueToSplit = onContinueToSplit,
         onBackClicked = onBackClicked,
-        modifier = modifier
+        modifier = modifier,
+        onScanReceiptClicked = onScanReceiptClicked
     )
 }
 
@@ -155,12 +167,15 @@ fun AddEditExpenseContent(
     ) -> Unit,
     onContinueToSplit: () -> Unit,
     onBackClicked: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onScanReceiptClicked: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.spendlyColors
     val hazeState = rememberHazeState()
     var localValidationMessage by remember { mutableStateOf<String?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showFullReceiptImage by remember { mutableStateOf(false) }
+    val localReceiptPath = remember(draft.receiptUrl) { resolveExistingLocalReceiptPath(draft.receiptUrl) }
 
     val nowMillis = remember { System.currentTimeMillis() }
     val yesterdayMillis = remember(nowMillis) { nowMillis - 86_400_000L }
@@ -208,6 +223,13 @@ fun AddEditExpenseContent(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    if (!draft.isEditMode && onScanReceiptClicked != null) {
+                        AiReceiptScanShortcutCard(
+                            onClick = onScanReceiptClicked,
+                            hazeState = hazeState
+                        )
+                    }
+
                     AmountEntryHeroCard(
                         label = if (draft.isEditMode) "SỐ TIỀN KHOẢN CHI (CHỈNH SỬA)" else "SỐ TIỀN CHI",
                         amount = draft.amount,
@@ -387,25 +409,36 @@ fun AddEditExpenseContent(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        OutlinedTextField(
-                            value = draft.receiptUrl,
-                            onValueChange = { text ->
-                                onUpdateDraft(null, null, null, null, null, null, text, null)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Link ảnh hóa đơn (Receipt URL)") },
-                            placeholder = { Text("https://...") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Link,
-                                    contentDescription = null,
-                                    tint = colors.textMuted
-                                )
-                            },
-                            singleLine = true,
-                            shape = SpendlyShapeTokens.CardSmall,
-                            colors = spendlyOutlinedFieldColors()
-                        )
+                        if (localReceiptPath != null) {
+                            LocalReceiptThumbnailCard(
+                                imagePath = localReceiptPath,
+                                onPreviewClick = { showFullReceiptImage = true },
+                                onRescanClick = onScanReceiptClicked,
+                                onClearClick = {
+                                    onUpdateDraft(null, null, null, null, null, null, "", null)
+                                }
+                            )
+                        } else {
+                            OutlinedTextField(
+                                value = draft.receiptUrl,
+                                onValueChange = { text ->
+                                    onUpdateDraft(null, null, null, null, null, null, text, null)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Link ảnh hóa đơn (Receipt URL)") },
+                                placeholder = { Text("https://...") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Link,
+                                        contentDescription = null,
+                                        tint = colors.textMuted
+                                    )
+                                },
+                                singleLine = true,
+                                shape = SpendlyShapeTokens.CardSmall,
+                                colors = spendlyOutlinedFieldColors()
+                            )
+                        }
                     }
 
                     val displayError = localValidationMessage ?: draft.errorMessage
@@ -486,6 +519,183 @@ fun AddEditExpenseContent(
             DatePicker(state = datePickerState)
         }
     }
+
+    if (showFullReceiptImage && localReceiptPath != null) {
+        ReceiptFullImageDialog(
+            imagePath = localReceiptPath,
+            onDismiss = { showFullReceiptImage = false }
+        )
+    }
+}
+
+@Composable
+private fun AiReceiptScanShortcutCard(
+    onClick: () -> Unit,
+    hazeState: HazeState?
+) {
+    val colors = MaterialTheme.spendlyColors
+    val shape = SpendlyShapeTokens.CardMedium
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .clickable(role = Role.Button, onClick = onClick),
+        hazeState = hazeState,
+        shape = shape,
+        tintColor = colors.lavenderContainer.copy(alpha = if (colors.isDark) 0.28f else 0.56f),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(SpendlyLavender, SpendlyIndigo))),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.DocumentScanner,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Quét hóa đơn bằng AI",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.textPrimary
+                )
+                Text(
+                    text = "Chụp hóa đơn để tự điền tiền, tên quán & danh mục",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                contentDescription = null,
+                tint = colors.deepLavender,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocalReceiptThumbnailCard(
+    imagePath: String,
+    onPreviewClick: () -> Unit,
+    onRescanClick: (() -> Unit)?,
+    onClearClick: () -> Unit
+) {
+    val colors = MaterialTheme.spendlyColors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(SpendlyShapeTokens.CardSmall)
+            .background(colors.surface.copy(alpha = if (colors.isDark) 0.45f else 0.72f))
+            .border(1.dp, colors.divider, SpendlyShapeTokens.CardSmall)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 64.dp, height = 80.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .border(1.dp, colors.divider, RoundedCornerShape(10.dp))
+                .clickable(onClick = onPreviewClick)
+        ) {
+            AsyncImage(
+                model = File(imagePath),
+                contentDescription = "Ảnh hóa đơn đã đính kèm",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(3.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ZoomIn,
+                    contentDescription = "Xem lớn",
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "Ảnh hóa đơn đã đính kèm",
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.textPrimary
+            )
+            Text(
+                text = "Chạm ảnh để phóng to xem chi tiết",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (onRescanClick != null) {
+                    TextButton(
+                        onClick = onRescanClick,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CameraAlt,
+                            contentDescription = null,
+                            tint = colors.deepLavender,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Quét lại", color = colors.deepLavender)
+                    }
+                }
+                TextButton(
+                    onClick = onClearClick,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.DeleteOutline,
+                        contentDescription = null,
+                        tint = colors.coralDeep,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Xóa ảnh", color = colors.coralDeep)
+                }
+            }
+        }
+    }
+}
+
+private fun resolveExistingLocalReceiptPath(rawUrl: String): String? {
+    val trimmed = rawUrl.trim()
+    if (trimmed.isEmpty()) return null
+    if (trimmed.startsWith("http://", ignoreCase = true) ||
+        trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        return null
+    }
+    val filePath = trimmed.removePrefix("file://")
+    return filePath.takeIf { File(it).exists() }
 }
 
 // ============================================================================

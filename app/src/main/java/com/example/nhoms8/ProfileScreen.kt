@@ -40,7 +40,6 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -60,16 +59,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.example.nhoms8.core.designsystem.GlassCard
 import com.example.nhoms8.core.designsystem.GradientCard
 import com.example.nhoms8.core.designsystem.OrganicBackground
 import com.example.nhoms8.core.designsystem.spendlyGlassSurface
+import com.example.nhoms8.feature.profile.resolveProfileAvatarModel
 import com.example.nhoms8.ui.theme.SpendlyShapeTokens
 import com.example.nhoms8.ui.theme.SpendlyTheme
 import com.example.nhoms8.ui.theme.spendlyColors
@@ -90,6 +92,7 @@ fun ProfileScreen(
     userName: String = "Lê Văn Hùng",
     userInitials: String = "VH",
     userSubtitle: String = "0912 345 678 · Trưởng nhóm",
+    userAvatarUrl: String = "",
     groupName: String = "Quỹ Chi Tiêu Nhóm 08",
     groupSubtitle: String = "4 thành viên · Quỹ hoạt động",
     onQrCodeClicked: () -> Unit = {},
@@ -146,24 +149,7 @@ fun ProfileScreen(
                         )
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .spendlyGlassSurface(
-                                hazeState = hazeState,
-                                shape = CircleShape,
-                                tintColor = colors.glassContainer
-                            )
-                            .clickable(role = Role.Button, onClick = onQrCodeClicked),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.QrCode2,
-                            contentDescription = "Mã QR nhận tiền",
-                            tint = colors.textPrimary,
-                            modifier = Modifier.size(21.dp)
-                        )
-                    }
+
                 }
 
                 // 2. HERO USER PROFILE GRADIENT CARD
@@ -188,11 +174,25 @@ fun ProfileScreen(
                                     .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = userInitials,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = Color.White
-                                )
+                                val avatarModel = remember(userAvatarUrl) {
+                                    resolveProfileAvatarModel(userAvatarUrl)
+                                }
+                                if (avatarModel != null) {
+                                    AsyncImage(
+                                        model = avatarModel,
+                                        contentDescription = "Ảnh đại diện",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape)
+                                    )
+                                } else {
+                                    Text(
+                                        text = userInitials,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = Color.White
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.width(14.dp))
